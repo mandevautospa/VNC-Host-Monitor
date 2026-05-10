@@ -1,0 +1,23 @@
+{
+  "host_name": "host-01",
+  "p3d_process_name": "Prepar3D.exe",
+  "tightvnc_service_name": "tvnserver",
+
+  "heartbeat_output_path": "\\\\CONFLAG\\P3DHealth\\host-01.json",
+  "local_log_path": "C:\\P3DWatchdog\\logs\\host_watchdog.log",
+  "disk_path": "C:\\",
+
+  "check_interval_seconds": 30,
+  "event_lookback_minutes": 10,
+
+  "thresholds": {
+    "cpu_warning_percent": 85,
+    "cpu_critical_percent": 95,
+    "ram_warning_percent": 85,
+    "ram_critical_percent": 92,
+    "disk_warning_free_percent": 20,
+    "disk_critical_free_percent": 10,
+    "disk_warning_free_gb": 20,
+    "disk_critical_free_gb": 10
+  }
+}

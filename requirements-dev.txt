@@ -1,0 +1,10 @@
+# Development and testing dependencies
+# Includes all production requirements plus testing tools
+
+-r requirements.txt
+
+pytest>=7.0.0
+pytest-cov>=4.0.0
+black>=23.0.0
+flake8>=5.0.0
+mypy>=1.0.0

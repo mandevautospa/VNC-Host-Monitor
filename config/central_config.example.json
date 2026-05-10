@@ -1,0 +1,27 @@
+{
+  "check_interval_seconds": 30,
+  "heartbeat_stale_seconds": 90,
+  "require_heartbeat": false,
+
+  "alert_after_failures": 3,
+  "critical_alert_after_failures": 2,
+
+  "log_path": "C:\\P3DMonitor\\logs\\central_monitor.log",
+
+  "active_hours": {
+    "enabled": true,
+    "start": "07:00",
+    "end": "18:00"
+  },
+
+  "alerts": {
+    "email_enabled": false,
+    "sms_email_gateway_enabled": false,
+    "recipients": [
+      "technician@example.com"
+    ],
+    "smtp_host": "smtp.example.com",
+    "smtp_port": 587,
+    "smtp_from": "monitor@example.com"
+  }
+}

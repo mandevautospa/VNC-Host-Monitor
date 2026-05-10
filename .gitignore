@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+env/
+.venv/
+venv/
+.env
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Logs — keep the folder, ignore log files
+logs/*.log
+logs/*.log.*
+
+# Actual config files may contain site-specific paths; commit only the .example versions
+config/hosts.json
+config/central_config.json
+config/host_watchdog_config.json
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+Thumbs.db
+.DS_Store

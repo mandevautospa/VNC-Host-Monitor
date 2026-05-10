@@ -1,0 +1,40 @@
+{
+  "hosts": [
+    {
+      "name": "host-01",
+      "address": "host-01",
+      "vnc_port": 5900,
+      "heartbeat_path": "\\\\CONFLAG\\P3DHealth\\host-01.json"
+    },
+    {
+      "name": "host-02",
+      "address": "host-02",
+      "vnc_port": 5900,
+      "heartbeat_path": "\\\\CONFLAG\\P3DHealth\\host-02.json"
+    },
+    {
+      "name": "host-03",
+      "address": "host-03",
+      "vnc_port": 5900,
+      "heartbeat_path": "\\\\CONFLAG\\P3DHealth\\host-03.json"
+    },
+    {
+      "name": "host-04",
+      "address": "host-04",
+      "vnc_port": 5900,
+      "heartbeat_path": "\\\\CONFLAG\\P3DHealth\\host-04.json"
+    },
+    {
+      "name": "host-05",
+      "address": "host-05",
+      "vnc_port": 5900,
+      "heartbeat_path": "\\\\CONFLAG\\P3DHealth\\host-05.json"
+    },
+    {
+      "name": "host-06",
+      "address": "host-06",
+      "vnc_port": 5900,
+      "heartbeat_path": "\\\\CONFLAG\\P3DHealth\\host-06.json"
+    }
+  ]
+}
