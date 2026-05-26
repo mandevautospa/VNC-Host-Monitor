@@ -1,0 +1,21 @@
+{
+  "check_interval_seconds": 10,
+  "heartbeat_stale_seconds": 45,
+  "require_heartbeat": true,
+  "alert_after_failures": 3,
+  "critical_alert_after_failures": 2,
+  "log_path": "logs/central_monitor_dev.log",
+  "active_hours": {
+    "enabled": false,
+    "start": "07:00",
+    "end": "18:00"
+  },
+  "alerts": {
+    "email_enabled": false,
+    "sms_email_gateway_enabled": false,
+    "recipients": [],
+    "smtp_host": "",
+    "smtp_port": 587,
+    "smtp_from": ""
+  }
+}

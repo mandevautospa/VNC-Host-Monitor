@@ -252,3 +252,30 @@ Do not embed config JSON into the executable. Keep them as external files and pa
 dist\P3DMonitorGUI.exe C:\P3DMonitor\config\central_config.json C:\P3DMonitor\config\hosts.json
 ```
 
+---
+
+## Home / Dev Mode
+
+When you do not have access to CONFLAG or the lab network, use the dev config files and the fake heartbeat writer:
+
+```powershell
+cd C:\P3DMonitor
+python scripts\write_fake_heartbeat.py --output dev_health\host-01.json --interval 10
+```
+
+In a second terminal:
+
+```powershell
+.\scripts\run_gui_dev.ps1
+```
+
+Useful one-shot tests:
+
+```powershell
+python scripts\write_fake_heartbeat.py --once --output dev_health\host-01.json --p3d-running false
+python scripts\write_fake_heartbeat.py --once --output dev_health\host-01.json --cpu-percent 96
+python scripts\write_fake_heartbeat.py --once --output dev_health\host-01.json --disk-free-percent 8 --disk-free-gb 5
+```
+
+Stop the writer and wait longer than the dev stale threshold to verify `STALE` behavior.
+

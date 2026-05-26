@@ -155,7 +155,7 @@ def _resolve_input_path(path: str | Path) -> Path:
     """Resolve config/hosts path from absolute, CWD-relative, or repo-root-relative input."""
     p = Path(path)
     if p.is_absolute():
-        return _fallback_to_example_if_missing(p)
+        return p
 
     cwd_candidate = Path.cwd() / p
     if cwd_candidate.exists():
@@ -165,27 +165,7 @@ def _resolve_input_path(path: str | Path) -> Path:
     if repo_candidate.exists():
         return repo_candidate
 
-    return _fallback_to_example_if_missing(repo_candidate)
-
-
-def _fallback_to_example_if_missing(path: Path) -> Path:
-    """If a requested JSON config is missing, fall back to sibling *.example.json when available."""
-    if path.exists():
-        return path
-
-    if path.suffix.lower() != ".json":
-        return path
-
-    example_path = path.with_name(f"{path.stem}.example.json")
-    if example_path.exists():
-        logging.getLogger(__name__).warning(
-            "Requested config file not found: %s. Falling back to example: %s",
-            path,
-            example_path,
-        )
-        return example_path
-
-    return path
+    return repo_candidate
 
 
 def _check_host(host: HostConfig, stale_seconds: int) -> dict:

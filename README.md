@@ -289,6 +289,22 @@ Behavior:
 - UI updates are delivered through a thread-safe queue and Tkinter `after()` loop.
 - Config files remain external and editable at runtime.
 
+### 17.3 Local Dev Mode
+
+Use the dev configs when working from home or when the real lab network is unavailable:
+
+```powershell
+python src\gui\monitor_gui.py config\central_config.dev.json config\hosts.dev.json
+```
+
+Or launch the helper script:
+
+```powershell
+.\scripts\run_gui_dev.ps1
+```
+
+The dev configs are intentionally separate from the production config files and only use local placeholder values.
+
 ## 18. Packaging GUI with PyInstaller
 
 Install dev tooling:
@@ -309,6 +325,59 @@ Build output:
 Deployment notes:
 - Keep `config\central_config.json` and `config\hosts.json` outside the executable so they remain editable.
 - Pass explicit config paths when launching packaged app:
+
+```powershell
+dist\P3DMonitorGUI.exe C:\P3DMonitor\config\central_config.json C:\P3DMonitor\config\hosts.json
+```
+
+## 19. Home / Dev Testing
+
+This workflow lets you validate the GUI, heartbeat parsing, stale detection, failure counts, and resource state handling without access to CONFLAG or the lab hosts.
+
+### 19.1 Start the fake heartbeat writer
+
+In one terminal:
+
+```powershell
+python scripts\write_fake_heartbeat.py --output dev_health\host-01.json --interval 10
+```
+
+### 19.2 Start the GUI in dev mode
+
+In a second terminal:
+
+```powershell
+.\scripts\run_gui_dev.ps1
+```
+
+### 19.3 Verify a fresh heartbeat
+
+- Confirm `host-01` shows a fresh heartbeat in the GUI.
+- The fake-offline host should begin failing ping/VNC and eventually show `HOST_UNREACHABLE` after the configured failure count.
+
+### 19.4 Test stale heartbeat handling
+
+- Stop the fake heartbeat writer with Ctrl+C.
+- Wait longer than `heartbeat_stale_seconds` in `config/central_config.dev.json`.
+- Restart or refresh the GUI and confirm the heartbeat becomes `STALE`.
+
+### 19.5 Test P3D state and resource states
+
+Write a one-shot heartbeat with alternate values:
+
+```powershell
+python scripts\write_fake_heartbeat.py --once --output dev_health\host-01.json --p3d-running false
+python scripts\write_fake_heartbeat.py --once --output dev_health\host-01.json --cpu-percent 96
+python scripts\write_fake_heartbeat.py --once --output dev_health\host-01.json --disk-free-percent 8 --disk-free-gb 5
+```
+
+Use those values to confirm the GUI and central logic show `P3D_NOT_RUNNING`, `RESOURCE_WARNING`, or `RESOURCE_CRITICAL` as expected.
+
+### 19.6 Re-test packaging later at work
+
+- Build the executable with PyInstaller after pulling the latest source.
+- Run the packaged GUI against real `config\central_config.json` and `config\hosts.json` on CONFLAG.
+- Keep the dev files separate so home testing never touches production configs.
 
 ```powershell
 P3DMonitorGUI.exe C:\P3DMonitor\config\central_config.json C:\P3DMonitor\config\hosts.json

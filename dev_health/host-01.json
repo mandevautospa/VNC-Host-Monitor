@@ -1,0 +1,34 @@
+{
+  "schema_version": "1.0",
+  "host": "host-01",
+  "timestamp": "2026-05-26T06:29:08.027446+00:00",
+  "watchdog_version": "dev-1.0",
+  "status": "HEALTHY",
+  "p3d": {
+    "process_name": "Prepar3D.exe",
+    "running": true,
+    "pid": 4321,
+    "cpu_percent": 18.0,
+    "memory_mb": 144.0,
+    "memory_percent": 23.0,
+    "hang_suspected": false
+  },
+  "tightvnc": {
+    "service_name": "tvnserver",
+    "service_running": true
+  },
+  "resources": {
+    "cpu_percent": 18.0,
+    "ram_percent": 42.0,
+    "disk_free_percent": 61.0,
+    "disk_free_gb": 120.0
+  },
+  "events": {
+    "lookback_minutes": 10,
+    "recent_app_crash_count": 0,
+    "recent_app_hang_count": 0,
+    "recent_display_error_count": 0,
+    "recent_events_summary": "Dev heartbeat payload"
+  },
+  "errors": []
+}

@@ -1,0 +1,16 @@
+{
+  "hosts": [
+    {
+      "name": "host-01",
+      "address": "127.0.0.1",
+      "vnc_port": 5900,
+      "heartbeat_path": "dev_health/host-01.json"
+    },
+    {
+      "name": "fake-offline-host",
+      "address": "192.0.2.123",
+      "vnc_port": 5900,
+      "heartbeat_path": "dev_health/fake-offline-host.json"
+    }
+  ]
+}
