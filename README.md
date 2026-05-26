@@ -258,6 +258,61 @@ cd C:\P3DMonitor
 Expected:
 - Ping OK
 - VNC 5900 OK
+
+## 17. Running Central Monitor Frontends
+
+### 17.1 Console Dashboard (existing behavior)
+
+Run from repo root with external config paths:
+
+```powershell
+python src\central_monitor\central_monitor.py config\central_config.json config\hosts.json
+```
+
+Optional host picker before launch:
+
+```powershell
+python src\central_monitor\central_monitor.py --gui config\central_config.json config\hosts.json
+```
+
+### 17.2 Tkinter GUI
+
+Run from repo root:
+
+```powershell
+python src\gui\monitor_gui.py config\central_config.json config\hosts.json
+```
+
+Behavior:
+- Startup host selection uses the same selector as console mode.
+- Monitoring runs on a background thread.
+- UI updates are delivered through a thread-safe queue and Tkinter `after()` loop.
+- Config files remain external and editable at runtime.
+
+## 18. Packaging GUI with PyInstaller
+
+Install dev tooling:
+
+```powershell
+python -m pip install -r requirements-dev.txt
+```
+
+Build one-file executable from repo root:
+
+```powershell
+pyinstaller --noconfirm --onefile --name P3DMonitorGUI src\gui\monitor_gui.py
+```
+
+Build output:
+- Executable: `dist\P3DMonitorGUI.exe`
+
+Deployment notes:
+- Keep `config\central_config.json` and `config\hosts.json` outside the executable so they remain editable.
+- Pass explicit config paths when launching packaged app:
+
+```powershell
+P3DMonitorGUI.exe C:\P3DMonitor\config\central_config.json C:\P3DMonitor\config\hosts.json
+```
 - Heartbeat fresh (<= 90 seconds)
 
 ## 12. MVP Definition of Done
