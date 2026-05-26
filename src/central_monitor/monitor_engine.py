@@ -141,13 +141,51 @@ def _update_incident_state(
 
 
 def _load_json(path: str | Path) -> dict:
-    with open(path, "r", encoding="utf-8") as fh:
+    resolved = _resolve_input_path(path)
+    with open(resolved, "r", encoding="utf-8") as fh:
         return json.load(fh)
 
 
 def _load_hosts(path: str | Path) -> List[HostConfig]:
     data = _load_json(path)
     return [HostConfig(**h) for h in data["hosts"]]
+
+
+def _resolve_input_path(path: str | Path) -> Path:
+    """Resolve config/hosts path from absolute, CWD-relative, or repo-root-relative input."""
+    p = Path(path)
+    if p.is_absolute():
+        return _fallback_to_example_if_missing(p)
+
+    cwd_candidate = Path.cwd() / p
+    if cwd_candidate.exists():
+        return cwd_candidate
+
+    repo_candidate = _REPO_ROOT / p
+    if repo_candidate.exists():
+        return repo_candidate
+
+    return _fallback_to_example_if_missing(repo_candidate)
+
+
+def _fallback_to_example_if_missing(path: Path) -> Path:
+    """If a requested JSON config is missing, fall back to sibling *.example.json when available."""
+    if path.exists():
+        return path
+
+    if path.suffix.lower() != ".json":
+        return path
+
+    example_path = path.with_name(f"{path.stem}.example.json")
+    if example_path.exists():
+        logging.getLogger(__name__).warning(
+            "Requested config file not found: %s. Falling back to example: %s",
+            path,
+            example_path,
+        )
+        return example_path
+
+    return path
 
 
 def _check_host(host: HostConfig, stale_seconds: int) -> dict:

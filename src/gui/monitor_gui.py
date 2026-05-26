@@ -6,6 +6,7 @@ import os
 import queue
 import sys
 import threading
+import traceback
 import tkinter as tk
 from pathlib import Path
 from tkinter import messagebox, ttk
@@ -258,16 +259,31 @@ def _build_engine_from_args(args: list[str]) -> MonitorEngine:
 def main() -> None:
     args = [arg for arg in sys.argv[1:] if not arg.startswith("--")]
 
-    try:
-        engine = _build_engine_from_args(args)
-    except RuntimeError:
-        print("No hosts selected. Exiting.")
-        return
+    engine = _build_engine_from_args(args)
 
     root = tk.Tk()
-    app = MonitorGuiApp(root, engine)
+    MonitorGuiApp(root, engine)
     root.mainloop()
 
 
+def _show_startup_error(message: str) -> None:
+    """Surface startup failures in GUI contexts where console output is not visible."""
+    try:
+        root = tk.Tk()
+        root.withdraw()
+        messagebox.showerror("P3D Monitor Startup Error", message)
+        root.destroy()
+    except Exception:
+        # As a fallback, rely on stderr only.
+        pass
+
+
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except RuntimeError:
+        print("No hosts selected. Exiting.")
+    except Exception:
+        trace = traceback.format_exc()
+        print(trace, file=sys.stderr)
+        _show_startup_error(trace)
