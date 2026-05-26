@@ -9,15 +9,8 @@ from pathlib import Path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from src.common.logging_setup import setup_logger
-from src.central_monitor.monitor_engine import (
-    MonitorEngine,
-    _build_alert_detail,
-    _is_within_active_hours,
-    _load_hosts,
-    _load_json,
-    _select_alert_threshold,
-    _update_incident_state,
-)
+from src.central_monitor import monitor_engine
+from src.central_monitor.monitor_engine import MonitorEngine
 from src.dashboard.console_dashboard import print_dashboard
 from src.gui.host_selector import show_host_selector
 
@@ -25,6 +18,43 @@ _REPO_ROOT = Path(__file__).parent.parent.parent
 _DEFAULT_CONFIG = _REPO_ROOT / "config" / "central_config.json"
 _DEFAULT_HOSTS  = _REPO_ROOT / "config" / "hosts.json"
 _DEFAULT_LOG    = _REPO_ROOT / "logs" / "central_monitor.log"
+
+
+# Backward-compatible exports for tests importing helper functions from this module.
+def _is_within_active_hours(config: dict, now=None) -> bool:
+    return monitor_engine._is_within_active_hours(config, now=now)
+
+
+def _select_alert_threshold(final_status, *, alert_threshold: int, critical_threshold: int, is_active_hours: bool) -> int:
+    return monitor_engine._select_alert_threshold(
+        final_status,
+        alert_threshold=alert_threshold,
+        critical_threshold=critical_threshold,
+        is_active_hours=is_active_hours,
+    )
+
+
+def _update_incident_state(*, final_status, prev_status, failure_count: int, threshold: int, incident_status, alert_sent_for_incident: bool) -> dict:
+    return monitor_engine._update_incident_state(
+        final_status=final_status,
+        prev_status=prev_status,
+        failure_count=failure_count,
+        threshold=threshold,
+        incident_status=incident_status,
+        alert_sent_for_incident=alert_sent_for_incident,
+    )
+
+
+def _build_alert_detail(result: dict) -> str:
+    return monitor_engine._build_alert_detail(result)
+
+
+def _load_json(path):
+    return monitor_engine._load_json(path)
+
+
+def _load_hosts(path):
+    return monitor_engine._load_hosts(path)
 
 
 def main() -> None:

@@ -225,3 +225,30 @@ Detect -> Log -> Alert -> Technician investigates manually
 | Host 05 | src/host_agent/host_watchdog.py | C:\P3DWatchdog\config.json | C:\P3DWatchdog\logs\host_watchdog.log |
 | Host 06 | src/host_agent/host_watchdog.py | C:\P3DWatchdog\config.json | C:\P3DWatchdog\logs\host_watchdog.log |
 
+---
+
+## GUI Run and Packaging
+
+### Run GUI from source
+
+```powershell
+cd C:\P3DMonitor
+python src\gui\monitor_gui.py .\config\central_config.json .\config\hosts.json
+```
+
+### Build GUI executable (PyInstaller)
+
+```powershell
+cd C:\P3DMonitor
+python -m pip install -r requirements-dev.txt
+pyinstaller --noconfirm --onefile --name P3DMonitorGUI src\gui\monitor_gui.py
+```
+
+### Keep config editable after packaging
+
+Do not embed config JSON into the executable. Keep them as external files and pass them at launch:
+
+```powershell
+dist\P3DMonitorGUI.exe C:\P3DMonitor\config\central_config.json C:\P3DMonitor\config\hosts.json
+```
+
