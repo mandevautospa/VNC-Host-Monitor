@@ -18,12 +18,10 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 from src.central_monitor.monitor_engine import MonitorEngine, _load_hosts, _load_json
 from src.common.logging_setup import setup_logger
 from src.common.models import HostConfig
+from src.gui.config_selector import default_config_paths, show_config_selector
 from src.gui.host_selector import show_host_selector
 
-_REPO_ROOT = Path(__file__).parent.parent.parent
-_DEFAULT_CONFIG = _REPO_ROOT / "config" / "central_config.json"
-_DEFAULT_HOSTS = _REPO_ROOT / "config" / "hosts.json"
-_DEFAULT_LOG = _REPO_ROOT / "logs" / "central_monitor.log"
+_DEFAULT_LOG = Path(__file__).resolve().parents[2] / "logs" / "central_monitor.log"
 
 
 class MonitorGuiApp:
@@ -234,17 +232,12 @@ class MonitorGuiApp:
         self.root.destroy()
 
 
-def _build_engine_from_args(args: list[str]) -> MonitorEngine:
-    config_path = args[0] if len(args) > 0 else _DEFAULT_CONFIG
-    hosts_path = args[1] if len(args) > 1 else _DEFAULT_HOSTS
-
+def _build_engine_from_paths(
+    config_path: str,
+    hosts_path: str,
+    selected_hosts: List[HostConfig],
+) -> MonitorEngine:
     config = _load_json(config_path)
-    all_hosts = _load_hosts(hosts_path)
-    selected_hosts: List[HostConfig] | None = show_host_selector(all_hosts)
-
-    if selected_hosts is None:
-        raise RuntimeError("No hosts selected.")
-
     log_path = config.get("log_path", _DEFAULT_LOG)
     logger = setup_logger("central_monitor", log_path)
 
@@ -256,10 +249,38 @@ def _build_engine_from_args(args: list[str]) -> MonitorEngine:
     )
 
 
+def _initial_config_paths(args: list[str]) -> tuple[str, str]:
+    if len(args) > 0:
+        central = args[0]
+    else:
+        central, _ = default_config_paths()
+
+    if len(args) > 1:
+        hosts = args[1]
+    else:
+        _, hosts = default_config_paths()
+
+    return central, hosts
+
+
 def main() -> None:
     args = [arg for arg in sys.argv[1:] if not arg.startswith("--")]
 
-    engine = _build_engine_from_args(args)
+    initial_central, initial_hosts = _initial_config_paths(args)
+    config_selection = show_config_selector(initial_central, initial_hosts)
+    if config_selection is None:
+        print("No config selected. Exiting.")
+        return
+
+    config_path, hosts_path = config_selection
+    all_hosts = _load_hosts(hosts_path)
+
+    selected_hosts: List[HostConfig] | None = show_host_selector(all_hosts)
+    if selected_hosts is None:
+        print("No hosts selected. Exiting.")
+        return
+
+    engine = _build_engine_from_paths(config_path, hosts_path, selected_hosts)
 
     root = tk.Tk()
     MonitorGuiApp(root, engine)

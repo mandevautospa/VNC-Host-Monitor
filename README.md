@@ -284,6 +284,8 @@ python src\gui\monitor_gui.py config\central_config.json config\hosts.json
 ```
 
 Behavior:
+- A config selector window appears first.
+- The host selector appears after config files are confirmed.
 - Startup host selection uses the same selector as console mode.
 - Monitoring runs on a background thread.
 - UI updates are delivered through a thread-safe queue and Tkinter `after()` loop.
@@ -304,6 +306,19 @@ Or launch the helper script:
 ```
 
 The dev configs are intentionally separate from the production config files and only use local placeholder values.
+
+### 17.4 Example Files
+
+The `*.example.json` files are templates for creating real configs. They are not intended to be used as live runtime configs unless you are intentionally testing against them.
+
+### 17.5 Startup Flow
+
+When the GUI or packaged executable starts, it:
+
+1. Opens the config selector.
+2. Loads the selected central and hosts config files.
+3. Opens the host selector.
+4. Starts the main dashboard with the chosen hosts.
 
 ## 18. Packaging GUI with PyInstaller
 

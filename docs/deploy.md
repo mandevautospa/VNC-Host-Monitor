@@ -252,6 +252,20 @@ Do not embed config JSON into the executable. Keep them as external files and pa
 dist\P3DMonitorGUI.exe C:\P3DMonitor\config\central_config.json C:\P3DMonitor\config\hosts.json
 ```
 
+### Startup config selector
+
+The GUI and packaged executable now open a config selector first. The default values point to:
+
+- `config\central_config.json`
+- `config\hosts.json`
+
+If the dev configs are the intended test set, you can use:
+
+- `config\central_config.dev.json`
+- `config\hosts.dev.json`
+
+Example template files remain templates for creating real configs, not the preferred live runtime inputs.
+
 ---
 
 ## Home / Dev Mode
