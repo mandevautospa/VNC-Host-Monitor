@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import json
 from collections import deque
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 import tkinter as tk
 from tkinter import ttk
 
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+import matplotlib.dates as mdates
 from matplotlib.figure import Figure
 
 
@@ -64,6 +65,10 @@ class LiveTrendsFrame(ttk.Frame):
         self.ax.set_ylim(0, 100)
         self.ax.grid(True)
 
+        self.ax.xaxis.set_major_locator(mdates.AutoDateLocator())
+        self.ax.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M:%S"))
+        self.ax.xaxis.offsetText.set_visible(False)
+
         self.cpu_line, = self.ax.plot([], [], label="Host CPU %")
         self.ram_line, = self.ax.plot([], [], label="Host RAM %")
 
@@ -88,6 +93,8 @@ class LiveTrendsFrame(ttk.Frame):
 
         if timestamp_text:
             timestamp = datetime.fromisoformat(timestamp_text.replace("Z", "+00:00"))
+            if timestamp.tzinfo is not None:
+                timestamp = timestamp.astimezone().replace(tzinfo=None)
         else:
             timestamp = datetime.now()
 
@@ -120,8 +127,17 @@ class LiveTrendsFrame(ttk.Frame):
         self.cpu_line.set_data(self.timestamps, self.cpu_values)
         self.ram_line.set_data(self.timestamps, self.ram_values)
 
-        self.ax.relim()
-        self.ax.autoscale_view(scalex=True, scaley=False)
+        if len(self.timestamps) == 1:
+            center = self.timestamps[0]
+            self.ax.set_xlim(center - timedelta(seconds=30), center + timedelta(seconds=30))
+        else:
+            self.ax.set_xlim(self.timestamps[0], self.timestamps[-1])
 
-        self.figure.autofmt_xdate()
+        self.ax.set_ylim(0, 100)
+
+        for label in self.ax.get_xticklabels():
+            label.set_rotation(30)
+            label.set_horizontalalignment("right")
+
+        self.figure.tight_layout()
         self.canvas.draw_idle()

@@ -20,6 +20,8 @@ from src.common.logging_setup import setup_logger
 from src.common.models import HostConfig
 from src.gui.config_selector import default_config_paths, show_config_selector
 from src.gui.host_selector import show_host_selector
+from src.gui.live_trends_frame import LiveTrendsFrame
+
 
 _DEFAULT_LOG = Path(__file__).resolve().parents[2] / "logs" / "central_monitor.log"
 
@@ -44,8 +46,23 @@ class MonitorGuiApp:
         self.root.after(150, self._process_queue)
 
     def _build_ui(self) -> None:
-        frame = ttk.Frame(self.root, padding=10)
-        frame.pack(fill="both", expand=True)
+        notebook = ttk.Notebook(self.root)
+        notebook.pack(fill="both", expand=True)
+
+        live_status_tab = ttk.Frame(notebook)
+        notebook.add(live_status_tab, text="Live Status")
+
+        frame = ttk.Frame(live_status_tab)
+        frame.pack(fill="both", expand=True, padx=10, pady=10)
+
+        trends_tab = LiveTrendsFrame(
+            notebook,
+            heartbeat_path=r"C:\P3DHealth\host-01.json",
+            host_name="host-01",
+            refresh_ms=2000,
+            max_points=180,
+        )
+        notebook.add(trends_tab, text="Host-01 Trends")
 
         cols = (
             "host",
