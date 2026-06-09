@@ -61,7 +61,7 @@ def load_heartbeat_history(
 
     try:
         df = pd.read_csv(csv_path)
-    except Exception:
+    except (pd.errors.ParserError, pd.errors.EmptyDataError, OSError):
         return pd.DataFrame()
 
     if df.empty:

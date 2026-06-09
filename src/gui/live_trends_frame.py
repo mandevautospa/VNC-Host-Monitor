@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import warnings
 from datetime import timedelta
 from pathlib import Path
 from tkinter import ttk
@@ -14,6 +15,7 @@ from src.common.heartbeat_csv import DEFAULT_CSV_PATH, load_heartbeat_history
 
 _MIN_PLOT_ROWS = 2
 _COLLECTING_MSG = "Collecting resource history..."
+_INITIAL_REFRESH_DELAY_MS = 500
 
 
 class LiveTrendsFrame(ttk.Frame):
@@ -34,12 +36,19 @@ class LiveTrendsFrame(ttk.Frame):
         csv_path: str | Path = DEFAULT_CSV_PATH,
         refresh_ms: int = 5_000,
         window_minutes: int = 30,
-        # Accepted but unused – kept so existing call-sites that still pass
-        # heartbeat_path= or max_points= do not raise a TypeError.
+        # Deprecated – accepted so existing call-sites do not raise TypeError.
         heartbeat_path: str | Path | None = None,
         max_points: int = 180,
     ):
         super().__init__(parent)
+
+        if heartbeat_path is not None:
+            warnings.warn(
+                "heartbeat_path is deprecated and has no effect; "
+                "LiveTrendsFrame now reads from the heartbeat metrics CSV.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
 
         self.host_name = host_name
         self.csv_path = Path(csv_path)
@@ -47,7 +56,7 @@ class LiveTrendsFrame(ttk.Frame):
         self.window_minutes = window_minutes
 
         self._build_ui()
-        self.after(500, self.refresh_graph)
+        self.after(_INITIAL_REFRESH_DELAY_MS, self.refresh_graph)
 
     # ------------------------------------------------------------------
     # UI construction
