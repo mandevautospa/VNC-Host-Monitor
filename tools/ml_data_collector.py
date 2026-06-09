@@ -269,9 +269,12 @@ def _collect_p3d_metrics(logger: logging.Logger) -> dict:
         start_raw = main_proc.get("StartTime")
         if start_raw:
             result["p3d_start_time"] = start_raw
-            # PowerShell serialises dates like "/Date(1234567890000)/"
+            # PowerShell serializes dates like "/Date(1234567890000)/"
             if isinstance(start_raw, str) and start_raw.startswith("/Date("):
-                ms = int(start_raw[6:start_raw.index(")")])
+                close_paren = start_raw.find(")")
+                if close_paren == -1:
+                    raise ValueError(f"Malformed PowerShell date string: {start_raw!r}")
+                ms = int(start_raw[6:close_paren])
                 start_epoch = ms / 1000.0
                 result["p3d_runtime_seconds"] = round(time.time() - start_epoch, 1)
     except Exception as exc:
