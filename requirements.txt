@@ -2,3 +2,5 @@
 # Installed on CONFLAG (central monitor) and all P3D hosts
 
 psutil>=5.9.0
+pandas
+matplotlib

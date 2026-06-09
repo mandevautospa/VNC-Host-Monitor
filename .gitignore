@@ -30,3 +30,31 @@ config/host_watchdog_config.json
 # OS
 Thumbs.db
 .DS_Store
+
+# Runtime logs and metrics
+logs/
+analysis/raw_logs/
+analysis/plots/
+analysis/*.csv
+*.log
+
+# Build outputs
+build/
+dist/
+*.exe
+
+# Local/runtime configs
+config/central_config.json
+config/hosts.json
+config/central_config.dev.json
+config/hosts.dev.json
+
+# Runtime heartbeat data
+dev_health/
+P3DHealth/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
