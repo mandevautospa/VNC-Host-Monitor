@@ -1,4 +1,4 @@
-"""Tests for src.common.heartbeat_csv.load_heartbeat_history."""
+"""Tests for src.common.heartbeat_csv."""
 
 import csv
 import io
@@ -8,7 +8,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from src.common.heartbeat_csv import load_heartbeat_history
+from src.common.heartbeat_csv import append_poll_results, load_heartbeat_history
 
 
 # ---------------------------------------------------------------------------
@@ -153,3 +153,137 @@ def test_unknown_host_returns_empty_dataframe(tmp_path):
     csv_file = _write_csv(tmp_path, [_row("host-01", now, 20.0, 40.0)])
     df = load_heartbeat_history(csv_path=csv_file, host="host-99")
     assert df.empty
+
+
+# ---------------------------------------------------------------------------
+# append_poll_results
+# ---------------------------------------------------------------------------
+
+def _make_poll_result(
+    host: str,
+    ts: str,
+    cpu: float = 25.0,
+    ram: float = 50.0,
+    *,
+    include_data: bool = True,
+) -> dict:
+    """Build a minimal MonitorEngine.poll_once() result dict for testing."""
+    data = (
+        {
+            "timestamp": ts,
+            "host": host,
+            "schema_version": "1.0",
+            "watchdog_version": "0.1.0",
+            "status": "HEALTHY",
+            "resources": {
+                "cpu_percent": cpu,
+                "ram_percent": ram,
+                "disk_free_percent": 60.0,
+                "disk_free_gb": 120.0,
+            },
+            "p3d": {
+                "running": True,
+                "pid": 1234,
+                "cpu_percent": 5.0,
+                "memory_mb": 300.0,
+                "memory_percent": 8.0,
+                "hang_suspected": False,
+            },
+            "tightvnc": {"service_running": True},
+            "events": {
+                "recent_app_crash_count": 0,
+                "recent_app_hang_count": 0,
+                "recent_display_error_count": 0,
+            },
+            "errors": [],
+        }
+        if include_data
+        else None
+    )
+    return {
+        "host": host,
+        "timestamp": ts,
+        "heartbeat": {
+            "exists": include_data,
+            "fresh": include_data,
+            "path": rf"\\share\{host}.json",
+            "data": data,
+        },
+        "host_reported": {},
+        "network": {},
+        "final_status": "HEALTHY",
+        "failure_count": 0,
+        "should_alert": False,
+    }
+
+
+def test_append_poll_results_creates_csv(tmp_path):
+    csv_file = tmp_path / "metrics.csv"
+    ts = "2024-06-01T12:00:00+00:00"
+    result = _make_poll_result("host-01", ts, cpu=30.0, ram=55.0)
+
+    written = append_poll_results([result], csv_path=csv_file)
+
+    assert written == 1
+    assert csv_file.exists()
+    df = load_heartbeat_history(csv_path=csv_file)
+    assert len(df) == 1
+    assert df.iloc[0]["host_cpu_percent"] == 30.0
+    assert df.iloc[0]["host_ram_percent"] == 55.0
+
+
+def test_append_poll_results_deduplicates(tmp_path):
+    csv_file = tmp_path / "metrics.csv"
+    ts = "2024-06-01T12:00:00+00:00"
+    result = _make_poll_result("host-01", ts)
+
+    first = append_poll_results([result], csv_path=csv_file)
+    second = append_poll_results([result], csv_path=csv_file)
+
+    assert first == 1
+    assert second == 0
+    df = load_heartbeat_history(csv_path=csv_file)
+    assert len(df) == 1
+
+
+def test_append_poll_results_multiple_hosts(tmp_path):
+    csv_file = tmp_path / "metrics.csv"
+    ts = "2024-06-01T12:00:00+00:00"
+    results = [
+        _make_poll_result("host-01", ts, cpu=20.0, ram=40.0),
+        _make_poll_result("host-02", ts, cpu=35.0, ram=60.0),
+    ]
+
+    written = append_poll_results(results, csv_path=csv_file)
+
+    assert written == 2
+    df = load_heartbeat_history(csv_path=csv_file)
+    assert len(df) == 2
+    assert set(df["host"].tolist()) == {"host-01", "host-02"}
+
+
+def test_append_poll_results_skips_missing_data(tmp_path):
+    csv_file = tmp_path / "metrics.csv"
+    ts = "2024-06-01T12:00:00+00:00"
+    result_no_data = _make_poll_result("host-01", ts, include_data=False)
+
+    written = append_poll_results([result_no_data], csv_path=csv_file)
+
+    assert written == 0
+    assert not csv_file.exists()
+
+
+def test_append_poll_results_appends_new_timestamps(tmp_path):
+    csv_file = tmp_path / "metrics.csv"
+    ts1 = "2024-06-01T12:00:00+00:00"
+    ts2 = "2024-06-01T12:05:00+00:00"
+
+    append_poll_results([_make_poll_result("host-01", ts1, cpu=10.0, ram=20.0)], csv_path=csv_file)
+    written = append_poll_results([_make_poll_result("host-01", ts2, cpu=15.0, ram=25.0)], csv_path=csv_file)
+
+    assert written == 1
+    df = load_heartbeat_history(csv_path=csv_file, host="host-01")
+    assert len(df) == 2
+    assert df.iloc[0]["host_cpu_percent"] == 10.0
+    assert df.iloc[1]["host_cpu_percent"] == 15.0
+
