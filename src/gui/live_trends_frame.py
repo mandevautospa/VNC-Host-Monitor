@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import tkinter as tk
 import warnings
-from datetime import timedelta
+from datetime import date, timedelta
 from pathlib import Path
 from tkinter import ttk
 
@@ -13,10 +14,52 @@ from matplotlib.figure import Figure
 from src.common.heartbeat_csv import DEFAULT_CSV_PATH, load_heartbeat_history
 
 
+# ---------------------------------------------------------------------------
+# Configuration constants – change these to tune behaviour without editing
+# graph logic.
+# ---------------------------------------------------------------------------
+
+#: Width of the rolling live-graph window (minutes).
+LIVE_GRAPH_WINDOW_MINUTES: int = 30
+
+#: Date used when opening the full-day popup.  ``"today"`` uses the current
+#: calendar date; any ISO date string (``"YYYY-MM-DD"``) selects a fixed day.
+DAILY_GRAPH_DATE_MODE: str = "today"
+
+
 _MIN_PLOT_ROWS = 2
 _COLLECTING_MSG = "Collecting resource history..."
 _INITIAL_REFRESH_DELAY_MS = 500
 
+
+# ---------------------------------------------------------------------------
+# Shared helpers
+# ---------------------------------------------------------------------------
+
+def _to_local_naive(ts_series: pd.Series) -> pd.Series:
+    """Convert a Series of timestamps to local naive datetimes.
+
+    Timezone-aware timestamps (e.g. UTC) are converted to the machine's local
+    time and the timezone info is stripped so matplotlib formats them correctly
+    using local-time labels.  Naive timestamps are returned unchanged.
+    """
+    if ts_series.empty or ts_series.dt.tz is None:
+        return ts_series
+    return ts_series.apply(
+        lambda ts: ts.to_pydatetime().astimezone().replace(tzinfo=None)
+    )
+
+
+def _ts_to_local_str(ts: pd.Timestamp, fmt: str = "%H:%M:%S") -> str:
+    """Format a single timestamp as a local-time string."""
+    if ts.tzinfo is not None:
+        ts = ts.to_pydatetime().astimezone().replace(tzinfo=None)
+    return ts.strftime(fmt)
+
+
+# ---------------------------------------------------------------------------
+# Live rolling graph
+# ---------------------------------------------------------------------------
 
 class LiveTrendsFrame(ttk.Frame):
     """
@@ -35,7 +78,7 @@ class LiveTrendsFrame(ttk.Frame):
         host_name: str = "host-01",
         csv_path: str | Path = DEFAULT_CSV_PATH,
         refresh_ms: int = 5_000,
-        window_minutes: int = 30,
+        window_minutes: int = LIVE_GRAPH_WINDOW_MINUTES,
         # Deprecated – accepted so existing call-sites do not raise TypeError.
         heartbeat_path: str | Path | None = None,
         max_points: int = 180,
@@ -73,6 +116,13 @@ class LiveTrendsFrame(ttk.Frame):
         )
         self.title_label.pack(side="left")
 
+        self.daily_btn = ttk.Button(
+            header,
+            text="View Full-Day Graph",
+            command=self._open_daily_graph,
+        )
+        self.daily_btn.pack(side="right", padx=(8, 0))
+
         self.status_label = ttk.Label(header, text=_COLLECTING_MSG)
         self.status_label.pack(side="right")
 
@@ -89,8 +139,8 @@ class LiveTrendsFrame(ttk.Frame):
         self.canvas.get_tk_widget().pack(fill="both", expand=True, padx=10, pady=10)
 
     def _setup_axes(self) -> None:
-        self.ax.set_title(f"{self.host_name} CPU/RAM Usage")
-        self.ax.set_xlabel("Time")
+        self.ax.set_title(f"{self.host_name} CPU/RAM Usage (last {self.window_minutes} min)")
+        self.ax.set_xlabel("Time (local)")
         self.ax.set_ylabel("Percent")
         self.ax.set_ylim(0, 100)
         self.ax.grid(True)
@@ -124,7 +174,9 @@ class LiveTrendsFrame(ttk.Frame):
         self.after(self.refresh_ms, self.refresh_graph)
 
     def _redraw(self, df: pd.DataFrame) -> None:
-        timestamps = df["heartbeat_timestamp"].tolist()
+        # Convert to local naive so matplotlib x-axis shows local time.
+        local_ts = _to_local_naive(df["heartbeat_timestamp"])
+        timestamps = local_ts.tolist()
         cpu_values = df["host_cpu_percent"].tolist()
         ram_values = df["host_ram_percent"].tolist()
 
@@ -141,7 +193,7 @@ class LiveTrendsFrame(ttk.Frame):
         ram_text = f"{ram_latest:.1f}%" if pd.notna(ram_latest) else "-"
         self.status_label.config(
             text=(
-                f"Last update: {ts_latest.strftime('%H:%M:%S')} | "
+                f"Last update: {_ts_to_local_str(ts_latest)} | "
                 f"CPU {cpu_text} | RAM {ram_text}"
             )
         )
@@ -168,3 +220,96 @@ class LiveTrendsFrame(ttk.Frame):
             else:
                 self.ax.set_xlim(start, end)
         self.ax.set_ylim(0, 100)
+
+    # ------------------------------------------------------------------
+    # Full-day graph popup
+    # ------------------------------------------------------------------
+
+    def _open_daily_graph(self) -> None:
+        DailyGraphWindow(self, host_name=self.host_name, csv_path=self.csv_path)
+
+
+# ---------------------------------------------------------------------------
+# Full-day historical graph popup
+# ---------------------------------------------------------------------------
+
+class DailyGraphWindow:
+    """Read-only popup showing one host's full-day CPU/RAM history.
+
+    Opens as a ``tk.Toplevel`` containing a larger matplotlib figure with all
+    samples collected for ``DAILY_GRAPH_DATE_MODE`` (default: today).  The
+    plot mirrors the style of ``analysis/plot_heartbeat_trends.py`` so every
+    collected sample is visible – no rolling window is applied.
+    """
+
+    def __init__(self, parent, host_name: str, csv_path: Path) -> None:
+        self.host_name = host_name
+        self.csv_path = csv_path
+
+        self.top = tk.Toplevel(parent)
+        self.top.title(f"Full-Day Graph — {host_name}")
+        self.top.geometry("1100x580")
+        self.top.resizable(True, True)
+
+        self._build_ui()
+
+    def _build_ui(self) -> None:
+        today_str = date.today().strftime("%Y-%m-%d")
+
+        # Header bar
+        header = ttk.Frame(self.top)
+        header.pack(fill="x", padx=10, pady=8)
+
+        ttk.Label(
+            header,
+            text=f"Full-Day Resource Trends — {self.host_name}  ({today_str})",
+            font=("Segoe UI", 13, "bold"),
+        ).pack(side="left")
+
+        df = load_heartbeat_history(
+            csv_path=self.csv_path,
+            host=self.host_name,
+            date=DAILY_GRAPH_DATE_MODE,
+        )
+
+        if df.empty or len(df) < _MIN_PLOT_ROWS:
+            ttk.Label(
+                self.top,
+                text="Not enough data collected for today's full graph yet.",
+                font=("Segoe UI", 11),
+            ).pack(expand=True)
+            return
+
+        ttk.Label(
+            header,
+            text=f"{len(df)} samples",
+        ).pack(side="right")
+
+        # Convert timestamps to local naive for correct x-axis labels.
+        local_ts = _to_local_naive(df["heartbeat_timestamp"])
+
+        fig = Figure(figsize=(12, 5.5), dpi=100)
+        ax = fig.add_subplot(111)
+
+        ax.plot(local_ts, df["host_cpu_percent"], label="Host CPU %", linewidth=0.9)
+        ax.plot(local_ts, df["host_ram_percent"], label="Host RAM %", linewidth=0.9)
+
+        ax.set_title(f"Host CPU and RAM usage — {self.host_name}  ({today_str})")
+        ax.set_xlabel("Time (local)")
+        ax.set_ylabel("Percent")
+        ax.set_ylim(0, 100)
+        ax.legend(loc="upper left")
+        ax.grid(True)
+        ax.xaxis.set_major_locator(mdates.AutoDateLocator())
+        ax.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M"))
+        ax.xaxis.offsetText.set_visible(False)
+
+        for lbl in ax.get_xticklabels():
+            lbl.set_rotation(45)
+            lbl.set_horizontalalignment("right")
+
+        fig.tight_layout()
+
+        canvas = FigureCanvasTkAgg(fig, master=self.top)
+        canvas.get_tk_widget().pack(fill="both", expand=True, padx=10, pady=(0, 10))
+        canvas.draw()
