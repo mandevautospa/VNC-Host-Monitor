@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Dict, List, Sequence
 
 from src.common.models import HostConfig, HostStatus
+from src.common.heartbeat_csv import append_poll_results
 from src.central_monitor.alerting import send_alert, send_recovery
 from src.central_monitor.heartbeat_reader import read_heartbeat
 from src.central_monitor.ping_check import ping_host
@@ -381,5 +382,10 @@ class MonitorEngine:
 
             except Exception as exc:
                 self.logger.error("Unhandled error checking host %s: %s", host.name, exc, exc_info=True)
+
+        try:
+            append_poll_results(results)
+        except Exception as exc:
+            self.logger.warning("Failed to write heartbeat metrics to CSV: %s", exc)
 
         return results
