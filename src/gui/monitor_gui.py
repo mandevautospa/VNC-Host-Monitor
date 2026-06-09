@@ -17,6 +17,7 @@ from typing import Dict, List
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from src.central_monitor.monitor_engine import MonitorEngine, _load_hosts, _load_json
+from src.common.heartbeat_csv import DEFAULT_CSV_PATH
 from src.common.logging_setup import setup_logger
 from src.common.models import HostConfig
 from src.gui.config_selector import default_config_paths, show_config_selector
@@ -72,21 +73,14 @@ class HostMonitorTab(ttk.Frame):
         trends_container = ttk.Frame(self)
         trends_container.pack(fill="both", expand=True, padx=10, pady=(10, 6))
 
-        if self.host_config.heartbeat_path:
-            trends = LiveTrendsFrame(
-                trends_container,
-                heartbeat_path=self.host_config.heartbeat_path,
-                host_name=self.host_config.name,
-                refresh_ms=refresh_ms,
-                max_points=180,
-            )
-            trends.pack(fill="both", expand=True)
-        else:
-            message = (
-                f"No heartbeat path configured for {self.host_config.name}.\n"
-                "Live trend graph is unavailable for this host."
-            )
-            ttk.Label(trends_container, text=message, justify="center").pack(fill="both", expand=True, pady=20)
+        trends = LiveTrendsFrame(
+            trends_container,
+            host_name=self.host_config.name,
+            csv_path=DEFAULT_CSV_PATH,
+            refresh_ms=5_000,
+            window_minutes=30,
+        )
+        trends.pack(fill="both", expand=True)
 
         details = ttk.LabelFrame(self, text="Current Status")
         details.pack(fill="x", expand=False, padx=10, pady=(0, 10))

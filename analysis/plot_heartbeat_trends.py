@@ -1,31 +1,18 @@
+import sys
 from pathlib import Path
-import pandas as pd
+
+# Allow this script to be run directly from the project root or the
+# analysis/ directory while still importing from src/.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 import matplotlib.pyplot as plt
 
-CSV_PATH = Path("analysis/heartbeat_metrics.csv")
+from src.common.heartbeat_csv import DEFAULT_CSV_PATH, load_heartbeat_history
+
 OUTPUT_DIR = Path("analysis/plots")
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-df = pd.read_csv(CSV_PATH)
-
-df["heartbeat_timestamp"] = pd.to_datetime(df["heartbeat_timestamp"], errors="coerce")
-
-numeric_columns = [
-    "host_cpu_percent",
-    "host_ram_percent",
-    "disk_free_percent",
-    "disk_free_gb",
-    "p3d_cpu_percent",
-    "p3d_memory_mb",
-    "p3d_memory_percent",
-]
-
-for column in numeric_columns:
-    if column in df.columns:
-        df[column] = pd.to_numeric(df[column], errors="coerce")
-
-df = df.dropna(subset=["heartbeat_timestamp"])
-df = df.sort_values("heartbeat_timestamp")
+df = load_heartbeat_history(csv_path=DEFAULT_CSV_PATH)
 
 for host in sorted(df["host"].dropna().unique()):
     host_df = df[df["host"] == host].copy()
