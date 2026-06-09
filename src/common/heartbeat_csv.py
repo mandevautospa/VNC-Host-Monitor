@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import csv
 import logging
-from datetime import timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import pandas as pd
@@ -36,10 +36,24 @@ _NUMERIC_COLUMNS = [
 ]
 
 
+def _ts_local_date(ts: pd.Timestamp) -> datetime.date | None:
+    """Return the local calendar date for a pandas Timestamp.
+
+    Handles both timezone-aware (converts to local) and naive (treated as
+    local) timestamps.
+    """
+    if pd.isna(ts):
+        return None
+    if ts.tzinfo is not None:
+        return ts.to_pydatetime().astimezone().replace(tzinfo=None).date()
+    return ts.date()
+
+
 def load_heartbeat_history(
     csv_path: str | Path = DEFAULT_CSV_PATH,
     host: str | None = None,
     window_minutes: int | None = None,
+    date: str | None = None,
 ) -> pd.DataFrame:
     """Load heartbeat/resource history from *csv_path*.
 
@@ -53,7 +67,12 @@ def load_heartbeat_history(
     window_minutes:
         If given, keep only rows whose ``heartbeat_timestamp`` falls within
         the last *window_minutes* minutes relative to the newest row in the
-        (already host-filtered) data.
+        (already host-filtered) data.  Mutually exclusive with *date* — if
+        both are provided *window_minutes* is applied after *date*.
+    date:
+        If given, keep only rows whose ``heartbeat_timestamp`` falls on this
+        local calendar date.  Pass ``"today"`` to use today's date, or an
+        ISO date string (``"YYYY-MM-DD"``).
 
     Returns
     -------
@@ -86,6 +105,15 @@ def load_heartbeat_history(
 
     if host is not None:
         df = df[df["host"] == host].copy().reset_index(drop=True)
+
+    if date is not None:
+        if date == "today":
+            filter_date = datetime.now().date()
+        else:
+            filter_date = datetime.fromisoformat(date).date()
+
+        local_dates = df["heartbeat_timestamp"].apply(_ts_local_date)
+        df = df[local_dates == filter_date].copy().reset_index(drop=True)
 
     if window_minutes is not None and not df.empty:
         cutoff = df["heartbeat_timestamp"].max() - timedelta(minutes=window_minutes)

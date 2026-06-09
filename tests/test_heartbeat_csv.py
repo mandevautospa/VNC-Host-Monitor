@@ -2,7 +2,7 @@
 
 import csv
 import io
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pandas as pd
@@ -286,4 +286,81 @@ def test_append_poll_results_appends_new_timestamps(tmp_path):
     assert len(df) == 2
     assert df.iloc[0]["host_cpu_percent"] == 10.0
     assert df.iloc[1]["host_cpu_percent"] == 15.0
+
+
+# ---------------------------------------------------------------------------
+# date filter
+# ---------------------------------------------------------------------------
+
+def test_date_filter_iso_string(tmp_path):
+    """Rows from a different calendar day (naive timestamps) are excluded."""
+    day_a = datetime(2024, 3, 15, 10, 0, 0)
+    day_b = datetime(2024, 3, 16, 10, 0, 0)
+    rows = [
+        _row("host-01", day_a, 10.0, 20.0),
+        _row("host-01", day_b, 30.0, 40.0),
+    ]
+    csv_file = _write_csv(tmp_path, rows)
+
+    df = load_heartbeat_history(csv_path=csv_file, host="host-01", date="2024-03-15")
+
+    assert len(df) == 1
+    assert df.iloc[0]["host_cpu_percent"] == 10.0
+
+
+def test_date_filter_today(tmp_path):
+    """``date='today'`` keeps rows with today's local date."""
+    today = datetime.now()
+    yesterday = today - timedelta(days=1)
+    rows = [
+        _row("host-01", yesterday, 5.0, 10.0),
+        _row("host-01", today, 55.0, 60.0),
+    ]
+    csv_file = _write_csv(tmp_path, rows)
+
+    df = load_heartbeat_history(csv_path=csv_file, host="host-01", date="today")
+
+    assert len(df) == 1
+    assert df.iloc[0]["host_cpu_percent"] == 55.0
+
+
+def test_date_filter_no_match_returns_empty(tmp_path):
+    """date filter returns empty DataFrame when no rows match."""
+    now = datetime(2024, 5, 1, 12, 0, 0)
+    csv_file = _write_csv(tmp_path, [_row("host-01", now, 10.0, 20.0)])
+
+    df = load_heartbeat_history(csv_path=csv_file, host="host-01", date="2024-01-01")
+
+    assert df.empty
+
+
+def test_date_filter_utc_aware_timestamps(tmp_path):
+    """UTC-aware timestamps are converted to local time before date comparison."""
+    # Use a UTC timestamp; local date might differ depending on timezone offset.
+    utc_ts = "2024-06-10T23:30:00+00:00"
+    local_dt = datetime.fromisoformat(utc_ts).astimezone().replace(tzinfo=None)
+    local_date_str = local_dt.date().isoformat()
+
+    csv_file = tmp_path / "heartbeat_metrics.csv"
+    # Write one UTC-aware row
+    with csv_file.open("w", newline="", encoding="utf-8") as fh:
+        writer = csv.DictWriter(fh, fieldnames=_FIELDNAMES, extrasaction="ignore")
+        writer.writeheader()
+        writer.writerow({
+            "collected_at": utc_ts,
+            "heartbeat_timestamp": utc_ts,
+            "host": "host-01",
+            "host_cpu_percent": 42.0,
+            "host_ram_percent": 55.0,
+            "disk_free_percent": 50.0,
+            "disk_free_gb": 100.0,
+            "p3d_cpu_percent": 5.0,
+            "p3d_memory_mb": 200.0,
+            "p3d_memory_percent": 10.0,
+        })
+
+    # Filtering by the local-time date should find the row.
+    df = load_heartbeat_history(csv_path=csv_file, host="host-01", date=local_date_str)
+    assert len(df) == 1
+    assert df.iloc[0]["host_cpu_percent"] == 42.0
 
