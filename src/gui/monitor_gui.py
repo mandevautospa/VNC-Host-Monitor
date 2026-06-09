@@ -8,9 +8,10 @@ import sys
 import threading
 import traceback
 import tkinter as tk
+from datetime import datetime
 from pathlib import Path
 from tkinter import messagebox, ttk
-from typing import List
+from typing import Dict, List
 
 # Allow running the file directly from the repo root.
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
@@ -24,6 +25,112 @@ from src.gui.live_trends_frame import LiveTrendsFrame
 
 
 _DEFAULT_LOG = Path(__file__).resolve().parents[2] / "logs" / "central_monitor.log"
+
+
+class HostMonitorTab(ttk.Frame):
+    """Single-host tab containing live trends and current status details."""
+
+    def __init__(
+        self,
+        parent,
+        host_config: HostConfig,
+        refresh_ms: int = 2_000,
+    ) -> None:
+        super().__init__(parent)
+        self.host_config = host_config
+        self._detail_vars: Dict[str, tk.StringVar] = {}
+        self._build_ui(refresh_ms)
+
+    @staticmethod
+    def _pct(value) -> str:
+        return f"{value:.0f}%" if value is not None else "-"
+
+    @staticmethod
+    def _heartbeat_cell(hb: dict) -> str:
+        hb_fresh = hb.get("fresh")
+        hb_age = hb.get("age_seconds")
+        hb_exists = hb.get("exists", False)
+        if hb_fresh is True and hb_age is not None:
+            return f"FRESH {hb_age:.0f}s"
+        if hb_exists and hb_fresh is False:
+            return f"STALE {hb_age:.0f}s" if hb_age is not None else "STALE"
+        return "N/A"
+
+    @staticmethod
+    def _format_update_time(timestamp_text: str | None) -> str:
+        if not timestamp_text:
+            return "-"
+        try:
+            timestamp = datetime.fromisoformat(str(timestamp_text).replace("Z", "+00:00"))
+            if timestamp.tzinfo is not None:
+                timestamp = timestamp.astimezone().replace(tzinfo=None)
+            return timestamp.strftime("%H:%M:%S")
+        except Exception:
+            return str(timestamp_text)
+
+    def _build_ui(self, refresh_ms: int) -> None:
+        trends_container = ttk.Frame(self)
+        trends_container.pack(fill="both", expand=True, padx=10, pady=(10, 6))
+
+        if self.host_config.heartbeat_path:
+            trends = LiveTrendsFrame(
+                trends_container,
+                heartbeat_path=self.host_config.heartbeat_path,
+                host_name=self.host_config.name,
+                refresh_ms=refresh_ms,
+                max_points=180,
+            )
+            trends.pack(fill="both", expand=True)
+        else:
+            message = (
+                f"No heartbeat path configured for {self.host_config.name}.\n"
+                "Live trend graph is unavailable for this host."
+            )
+            ttk.Label(trends_container, text=message, justify="center").pack(fill="both", expand=True, pady=20)
+
+        details = ttk.LabelFrame(self, text="Current Status")
+        details.pack(fill="x", expand=False, padx=10, pady=(0, 10))
+
+        fields = [
+            ("Host", "host_name"),
+            ("Ping", "ping"),
+            ("VNC", "vnc"),
+            ("Heartbeat", "heartbeat"),
+            ("P3D", "p3d"),
+            ("CPU", "cpu"),
+            ("RAM", "ram"),
+            ("Disk Free", "disk"),
+            ("Final Status", "status"),
+            ("Failure Count", "failure_count"),
+            ("Last Update", "last_update"),
+        ]
+
+        for idx, (label_text, key) in enumerate(fields):
+            value_var = tk.StringVar(value=self.host_config.name if key == "host_name" else "-")
+            self._detail_vars[key] = value_var
+            ttk.Label(details, text=f"{label_text}:").grid(row=idx, column=0, sticky="w", padx=(10, 6), pady=2)
+            ttk.Label(details, textvariable=value_var).grid(row=idx, column=1, sticky="w", padx=(0, 10), pady=2)
+
+        details.grid_columnconfigure(1, weight=1)
+
+    def update_from_result(self, result: dict) -> None:
+        net = result.get("network", {})
+        hb = result.get("heartbeat", {})
+        hr = result.get("host_reported", {})
+
+        self._detail_vars["host_name"].set(str(result.get("host", self.host_config.name)))
+        self._detail_vars["ping"].set("OK" if net.get("ping_ok") else "FAIL")
+        self._detail_vars["vnc"].set("OK" if net.get("vnc_port_ok") else "FAIL")
+        self._detail_vars["heartbeat"].set(self._heartbeat_cell(hb))
+        self._detail_vars["p3d"].set(
+            "RUN" if hr.get("p3d_running") is True else ("DOWN" if hr.get("p3d_running") is False else "-")
+        )
+        self._detail_vars["cpu"].set(self._pct(hr.get("cpu_percent")))
+        self._detail_vars["ram"].set(self._pct(hr.get("ram_percent")))
+        self._detail_vars["disk"].set(self._pct(hr.get("disk_free_percent")))
+        self._detail_vars["status"].set(str(result.get("final_status", "UNKNOWN")))
+        self._detail_vars["failure_count"].set(str(result.get("failure_count", 0)))
+        self._detail_vars["last_update"].set(self._format_update_time(result.get("timestamp")))
 
 
 class MonitorGuiApp:
@@ -40,29 +147,33 @@ class MonitorGuiApp:
         self._queue: queue.Queue = queue.Queue()
         self._stop_event = threading.Event()
         self._worker_thread: threading.Thread | None = None
+        self.host_tabs: Dict[str, HostMonitorTab] = {}
 
         self._build_ui()
         self._seed_rows()
         self.root.after(150, self._process_queue)
 
     def _build_ui(self) -> None:
-        notebook = ttk.Notebook(self.root)
+        main_frame = ttk.Frame(self.root, padding=10)
+        main_frame.pack(fill="both", expand=True)
+
+        notebook = ttk.Notebook(main_frame)
         notebook.pack(fill="both", expand=True)
 
-        live_status_tab = ttk.Frame(notebook)
-        notebook.add(live_status_tab, text="Live Status")
+        overview_tab = ttk.Frame(notebook)
+        notebook.add(overview_tab, text="Overview")
 
-        frame = ttk.Frame(live_status_tab)
-        frame.pack(fill="both", expand=True, padx=10, pady=10)
+        frame = ttk.Frame(overview_tab)
+        frame.pack(fill="both", expand=True)
 
-        trends_tab = LiveTrendsFrame(
-            notebook,
-            heartbeat_path=r"C:\P3DHealth\host-01.json",
-            host_name="host-01",
-            refresh_ms=2000,
-            max_points=180,
-        )
-        notebook.add(trends_tab, text="Host-01 Trends")
+        for host in self.engine.hosts:
+            host_tab = HostMonitorTab(
+                notebook,
+                host_config=host,
+                refresh_ms=2_000,
+            )
+            self.host_tabs[host.name] = host_tab
+            notebook.add(host_tab, text=host.name)
 
         cols = (
             "host",
@@ -119,8 +230,8 @@ class MonitorGuiApp:
         frame.grid_rowconfigure(0, weight=1)
         frame.grid_columnconfigure(0, weight=1)
 
-        btn_frame = ttk.Frame(frame)
-        btn_frame.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(10, 0))
+        btn_frame = ttk.Frame(main_frame)
+        btn_frame.pack(fill="x", pady=(10, 0))
 
         self.start_btn = ttk.Button(btn_frame, text="Start Monitoring", command=self.start_monitoring)
         self.stop_btn = ttk.Button(btn_frame, text="Stop Monitoring", command=self.stop_monitoring)
@@ -186,8 +297,12 @@ class MonitorGuiApp:
                 continue
             if not self.tree.exists(host):
                 self.tree.insert("", "end", iid=host, values=self._to_values(result))
-                continue
-            self.tree.item(host, values=self._to_values(result))
+            else:
+                self.tree.item(host, values=self._to_values(result))
+
+            host_tab = self.host_tabs.get(host)
+            if host_tab:
+                host_tab.update_from_result(result)
 
     def _process_queue(self) -> None:
         try:

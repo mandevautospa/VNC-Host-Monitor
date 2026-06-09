@@ -69,8 +69,9 @@ class LiveTrendsFrame(ttk.Frame):
         self.ax.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M:%S"))
         self.ax.xaxis.offsetText.set_visible(False)
 
-        self.cpu_line, = self.ax.plot([], [], label="Host CPU %")
-        self.ram_line, = self.ax.plot([], [], label="Host RAM %")
+        # Markers ensure a visible point even when only one sample exists.
+        self.cpu_line, = self.ax.plot([], [], label="Host CPU %", marker="o", markersize=3)
+        self.ram_line, = self.ax.plot([], [], label="Host RAM %", marker="o", markersize=3)
 
         self.ax.legend(loc="upper left")
 
@@ -105,7 +106,12 @@ class LiveTrendsFrame(ttk.Frame):
             heartbeat = self._read_heartbeat()
             timestamp, cpu, ram = self._extract_metrics(heartbeat)
 
-            self.timestamps.append(timestamp)
+            plot_timestamp = timestamp
+            if self.timestamps and plot_timestamp <= self.timestamps[-1]:
+                step_seconds = max(1.0, self.refresh_ms / 1000.0)
+                plot_timestamp = self.timestamps[-1] + timedelta(seconds=step_seconds)
+
+            self.timestamps.append(plot_timestamp)
             self.cpu_values.append(cpu)
             self.ram_values.append(ram)
 
@@ -131,7 +137,12 @@ class LiveTrendsFrame(ttk.Frame):
             center = self.timestamps[0]
             self.ax.set_xlim(center - timedelta(seconds=30), center + timedelta(seconds=30))
         else:
-            self.ax.set_xlim(self.timestamps[0], self.timestamps[-1])
+            start = self.timestamps[0]
+            end = self.timestamps[-1]
+            if start == end:
+                self.ax.set_xlim(start - timedelta(seconds=30), end + timedelta(seconds=30))
+            else:
+                self.ax.set_xlim(start, end)
 
         self.ax.set_ylim(0, 100)
 
