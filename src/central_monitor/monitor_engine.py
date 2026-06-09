@@ -216,6 +216,7 @@ def _check_host(host: HostConfig, stale_seconds: int) -> dict:
                 fresh=hb.fresh,
                 age_seconds=hb.age_seconds,
                 path=hb.path,
+                data=hb.data,
                 error=hb.error,
             )
             if hb.data:
