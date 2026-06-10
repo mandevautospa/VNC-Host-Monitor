@@ -53,6 +53,8 @@ def test_access_denied_on_stats_still_reports_running():
     assert result.running is True
     assert result.pid == 5678
     assert result.cpu_percent is None
+    assert result.memory_mb is None
+    assert result.memory_percent is None
     assert result.error is None
 
 
