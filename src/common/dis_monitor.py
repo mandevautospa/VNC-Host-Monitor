@@ -283,7 +283,9 @@ def check_dis_health(
 
     try:
         # ── feature flags ────────────────────────────────────────────────────
-        global_enabled = dis_config.get("enabled", False)
+        # If the dis_monitoring section exists but omits "enabled", treat it as enabled.
+        # This avoids silently disabling DIS/session checks after partial config updates.
+        global_enabled = dis_config.get("enabled", True)
         host_enabled = host_dis_config.get("enabled", True)
         safe_mode = dis_config.get("safe_mode", True)
         default_unavailable = dis_config.get(
