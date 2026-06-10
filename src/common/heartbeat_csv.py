@@ -149,6 +149,12 @@ _CSV_FIELDNAMES = [
     "recent_app_hang_count",
     "recent_display_error_count",
     "error_count",
+    # DIS/session-layer monitoring fields (added in DIS monitoring rollout)
+    "dis_status",
+    "dis_packets_per_sec",
+    "dis_bytes_per_sec",
+    "dis_monitoring_mode",
+    "dis_error",
 ]
 
 
@@ -203,6 +209,12 @@ def _row_from_poll_result(result: dict) -> dict | None:
         "recent_app_hang_count": _nested(data, "events", "recent_app_hang_count"),
         "recent_display_error_count": _nested(data, "events", "recent_display_error_count"),
         "error_count": error_count,
+        # DIS fields — present only when DIS monitoring is active; empty otherwise.
+        "dis_status": result.get("dis", {}).get("dis_status", ""),
+        "dis_packets_per_sec": result.get("dis", {}).get("dis_packets_per_sec", ""),
+        "dis_bytes_per_sec": result.get("dis", {}).get("dis_bytes_per_sec", ""),
+        "dis_monitoring_mode": result.get("dis", {}).get("dis_monitoring_mode", ""),
+        "dis_error": result.get("dis", {}).get("dis_error", ""),
     }
 
 
