@@ -12,6 +12,13 @@ from typing import Dict, List, Sequence
 from src.common.models import HostConfig, HostStatus
 from src.common.heartbeat_csv import append_poll_results, archive_day
 from src.common.graph_archiver import save_daily_graph_images
+from src.common.dis_monitor import (
+    DisCheckResult,
+    DisHostState,
+    DisStatus,
+    PlaceholderCollector,
+    check_dis_health,
+)
 from src.central_monitor.alerting import send_alert, send_recovery
 from src.central_monitor.debounce import DebounceThresholds, HostDebounceState, update_debounce_state
 from src.central_monitor.heartbeat_reader import read_heartbeat
@@ -171,7 +178,12 @@ def _resolve_input_path(path: str | Path) -> Path:
     return repo_candidate
 
 
-def _check_host(host: HostConfig, stale_seconds: int) -> dict:
+def _check_host(
+    host: HostConfig,
+    stale_seconds: int,
+    dis_config: dict | None = None,
+    dis_state: DisHostState | None = None,
+) -> dict:
     """
     Run all central checks for host and return merged result.
 
@@ -183,6 +195,7 @@ def _check_host(host: HostConfig, stale_seconds: int) -> dict:
         "network": {},
         "heartbeat": {},
         "host_reported": {},
+        "dis": {},
         "final_status": HostStatus.UNKNOWN,
         "failure_count": 0,
         "should_alert": False,
@@ -246,6 +259,41 @@ def _check_host(host: HostConfig, stale_seconds: int) -> dict:
     else:
         result["heartbeat"].update(exists=False, error="No heartbeat path configured")
 
+    # ── DIS / session-layer health check ─────────────────────────────────────
+    # Passive, read-only, safe by default. Never sends packets, never restarts
+    # P3D, never joins multicast groups. If data is unavailable → DIS_UNKNOWN.
+    if dis_config is not None:
+        try:
+            host_dis_cfg = dis_config.get("hosts", {}).get(host.name, {})
+            p3d_running = result.get("host_reported", {}).get("p3d_running")
+            dis_result = check_dis_health(
+                host_name=host.name,
+                p3d_running=p3d_running,
+                dis_config=dis_config,
+                host_dis_config=host_dis_cfg,
+                collector=PlaceholderCollector(),
+                state=dis_state or DisHostState(),
+            )
+            result["dis"] = {
+                "dis_status": str(dis_result.dis_status),
+                "dis_last_checked": dis_result.dis_last_checked,
+                "dis_packets_per_sec": dis_result.dis_packets_per_sec,
+                "dis_bytes_per_sec": dis_result.dis_bytes_per_sec,
+                "dis_error": dis_result.dis_error,
+                "dis_monitoring_mode": dis_result.dis_monitoring_mode,
+            }
+        except Exception as exc:
+            result["dis"] = {
+                "dis_status": str(DisStatus.DIS_ERROR),
+                "dis_error": str(exc),
+                "dis_monitoring_mode": "error",
+            }
+    else:
+        result["dis"] = {
+            "dis_status": str(DisStatus.DIS_DISABLED),
+            "dis_monitoring_mode": "disabled",
+        }
+
     return result
 
 
@@ -302,6 +350,14 @@ class MonitorEngine:
             h.name: HostDebounceState() for h in self.hosts
         }
 
+        # DIS monitoring config and per-host state.
+        # dis_config is None when the section is absent from central_config.json
+        # so older deployments continue to work without any config changes.
+        self.dis_config: dict | None = self.config.get("dis_monitoring") or None
+        self.dis_states: Dict[str, DisHostState] = {
+            h.name: DisHostState() for h in self.hosts
+        }
+
         # Tracks the calendar date of the last successful poll cycle so that a
         # day-boundary crossing can be detected and the previous day's data
         # archived automatically.
@@ -309,9 +365,10 @@ class MonitorEngine:
 
         self.logger = logger or logging.getLogger("central_monitor")
         self.logger.info(
-            "Monitor engine initialized. Monitoring %d host(s). Interval: %ds.",
+            "Monitor engine initialized. Monitoring %d host(s). Interval: %ds. DIS monitoring: %s.",
             len(self.hosts),
             self.interval,
+            "enabled" if (self.dis_config and self.dis_config.get("enabled")) else "disabled",
         )
 
     def poll_once(self) -> List[dict]:
@@ -320,7 +377,12 @@ class MonitorEngine:
 
         for host in self.hosts:
             try:
-                result = _check_host(host, self.stale_seconds)
+                result = _check_host(
+                    host,
+                    self.stale_seconds,
+                    dis_config=self.dis_config,
+                    dis_state=self.dis_states[host.name],
+                )
                 raw_status = evaluate_host_status(result)
 
                 if self.require_heartbeat:

@@ -6,11 +6,15 @@ HostConfig  — one entry from hosts.json
 PingResult  — output of a single ping check
 VncResult   — output of a single VNC port / banner check
 HeartbeatResult — result of reading one heartbeat JSON file
+DisStatus   — DIS/session-layer health status (re-exported from dis_monitor)
 """
 
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Optional
+
+# Re-export DisStatus so callers can import from models directly.
+from src.common.dis_monitor import DisStatus  # noqa: F401
 
 
 class HostStatus(str, Enum):
