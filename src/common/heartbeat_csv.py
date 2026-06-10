@@ -206,6 +206,91 @@ def _row_from_poll_result(result: dict) -> dict | None:
     }
 
 
+def archive_day(
+    target_date: datetime.date,
+    csv_path: str | Path = DEFAULT_CSV_PATH,
+    archive_dir: str | Path | None = None,
+) -> Path | None:
+    """Save all rows for *target_date* to a separate per-day archive CSV.
+
+    The archive directory defaults to an ``archive/`` sub-folder next to the
+    main CSV (i.e. ``analysis/archive/``).  The file is named
+    ``YYYY-MM-DD_heartbeat_metrics.csv``.
+
+    Parameters
+    ----------
+    target_date:
+        The calendar date whose rows should be archived.
+    csv_path:
+        Source CSV file.  Defaults to ``analysis/heartbeat_metrics.csv``.
+    archive_dir:
+        Destination directory for archive files.  Created automatically if it
+        does not exist.
+
+    Returns
+    -------
+    pathlib.Path or None
+        The path of the written archive file, or ``None`` when no rows
+        matched *target_date*.
+    """
+    csv_path = Path(csv_path)
+    if archive_dir is None:
+        archive_dir = csv_path.parent / "archive"
+    archive_dir = Path(archive_dir)
+
+    df = load_heartbeat_history(csv_path=csv_path, date=target_date.isoformat())
+    if df.empty:
+        _logger.debug("archive_day: no rows for %s in %s; skipping.", target_date, csv_path)
+        return None
+
+    archive_dir.mkdir(parents=True, exist_ok=True)
+    out_path = archive_dir / f"{target_date.isoformat()}_heartbeat_metrics.csv"
+    df.to_csv(out_path, index=False)
+    _logger.info("Archived %d rows for %s → %s", len(df), target_date, out_path)
+    return out_path
+
+
+def load_day_history(
+    target_date: datetime.date,
+    host: str | None = None,
+    csv_path: str | Path = DEFAULT_CSV_PATH,
+    archive_dir: str | Path | None = None,
+) -> pd.DataFrame:
+    """Load heartbeat history for a single calendar date.
+
+    Checks the daily archive file first so that past days remain accessible
+    even after the main CSV has been cleared or rotated.  Falls back to
+    filtering the main CSV by date when no archive file exists.
+
+    Parameters
+    ----------
+    target_date:
+        The calendar date to load.
+    host:
+        If given, keep only rows for this host.
+    csv_path:
+        Main heartbeat metrics CSV.
+    archive_dir:
+        Directory containing per-day archive CSVs.  Defaults to the
+        ``archive/`` sub-folder next to *csv_path*.
+
+    Returns
+    -------
+    pandas.DataFrame
+        Sorted by ``heartbeat_timestamp`` ascending.  Empty when no data
+        is found for the requested date.
+    """
+    csv_path = Path(csv_path)
+    if archive_dir is None:
+        archive_dir = csv_path.parent / "archive"
+    archive_path = Path(archive_dir) / f"{target_date.isoformat()}_heartbeat_metrics.csv"
+
+    if archive_path.exists():
+        return load_heartbeat_history(csv_path=archive_path, host=host)
+
+    return load_heartbeat_history(csv_path=csv_path, host=host, date=target_date.isoformat())
+
+
 def append_poll_results(
     results: list,
     csv_path: str | Path = DEFAULT_CSV_PATH,

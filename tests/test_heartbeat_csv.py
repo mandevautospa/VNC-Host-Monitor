@@ -8,7 +8,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from src.common.heartbeat_csv import append_poll_results, load_heartbeat_history
+from src.common.heartbeat_csv import append_poll_results, archive_day, load_day_history, load_heartbeat_history
 
 
 # ---------------------------------------------------------------------------
@@ -363,4 +363,99 @@ def test_date_filter_utc_aware_timestamps(tmp_path):
     df = load_heartbeat_history(csv_path=csv_file, host="host-01", date=local_date_str)
     assert len(df) == 1
     assert df.iloc[0]["host_cpu_percent"] == 42.0
+
+
+# ---------------------------------------------------------------------------
+# archive_day
+# ---------------------------------------------------------------------------
+
+def test_archive_day_creates_file(tmp_path):
+    """archive_day writes a CSV containing only the rows for the target date."""
+    day_a = datetime(2024, 4, 10, 9, 0, 0)
+    day_b = datetime(2024, 4, 11, 9, 0, 0)
+    csv_file = _write_csv(tmp_path, [
+        _row("host-01", day_a, 20.0, 40.0),
+        _row("host-01", day_b, 30.0, 60.0),
+    ])
+    archive_dir = tmp_path / "archive"
+
+    result = archive_day(day_a.date(), csv_path=csv_file, archive_dir=archive_dir)
+
+    assert result is not None
+    assert result.exists()
+    assert result.name == "2024-04-10_heartbeat_metrics.csv"
+
+    archived_df = load_heartbeat_history(csv_path=result)
+    assert len(archived_df) == 1
+    assert archived_df.iloc[0]["host_cpu_percent"] == 20.0
+
+
+def test_archive_day_returns_none_when_no_rows(tmp_path):
+    """archive_day returns None when no rows match the target date."""
+    day_a = datetime(2024, 4, 10, 9, 0, 0)
+    csv_file = _write_csv(tmp_path, [_row("host-01", day_a, 20.0, 40.0)])
+    archive_dir = tmp_path / "archive"
+
+    result = archive_day(datetime(2024, 1, 1).date(), csv_path=csv_file, archive_dir=archive_dir)
+
+    assert result is None
+    assert not archive_dir.exists()
+
+
+def test_archive_day_creates_archive_dir(tmp_path):
+    """archive_day creates the archive directory if it does not exist."""
+    day = datetime(2024, 5, 1, 8, 0, 0)
+    csv_file = _write_csv(tmp_path, [_row("host-01", day, 50.0, 70.0)])
+    archive_dir = tmp_path / "nested" / "archive"
+
+    archive_day(day.date(), csv_path=csv_file, archive_dir=archive_dir)
+
+    assert archive_dir.is_dir()
+
+
+# ---------------------------------------------------------------------------
+# load_day_history
+# ---------------------------------------------------------------------------
+
+def test_load_day_history_prefers_archive(tmp_path):
+    """load_day_history reads from the archive CSV when it exists."""
+    target = datetime(2024, 6, 1, 10, 0, 0)
+    csv_file = _write_csv(tmp_path, [_row("host-01", target, 99.0, 88.0)])
+    archive_dir = tmp_path / "archive"
+
+    # Create the archive with different values to confirm the archive is preferred.
+    archive_dir.mkdir()
+    archive_file = archive_dir / "2024-06-01_heartbeat_metrics.csv"
+    archive_file.write_text(csv_file.read_text())  # same data
+
+    # Modify main CSV to have different CPU value – archive should still win.
+    csv_file.write_text(
+        csv_file.read_text().replace("99.0", "1.0")
+    )
+
+    df = load_day_history(target.date(), host="host-01", csv_path=csv_file, archive_dir=archive_dir)
+    assert len(df) == 1
+    assert df.iloc[0]["host_cpu_percent"] == 99.0
+
+
+def test_load_day_history_falls_back_to_main_csv(tmp_path):
+    """load_day_history falls back to the main CSV when no archive file exists."""
+    target = datetime(2024, 7, 15, 12, 0, 0)
+    csv_file = _write_csv(tmp_path, [_row("host-01", target, 42.0, 55.0)])
+    archive_dir = tmp_path / "archive"  # does not exist
+
+    df = load_day_history(target.date(), host="host-01", csv_path=csv_file, archive_dir=archive_dir)
+    assert len(df) == 1
+    assert df.iloc[0]["host_cpu_percent"] == 42.0
+
+
+def test_load_day_history_returns_empty_when_no_data(tmp_path):
+    """load_day_history returns an empty DataFrame when neither source has data."""
+    target = datetime(2024, 8, 1, 10, 0, 0)
+    csv_file = _write_csv(tmp_path, [_row("host-01", target, 10.0, 20.0)])
+    archive_dir = tmp_path / "archive"
+
+    # Request a different date that has no data.
+    df = load_day_history(datetime(2024, 1, 1).date(), csv_path=csv_file, archive_dir=archive_dir)
+    assert df.empty
 
