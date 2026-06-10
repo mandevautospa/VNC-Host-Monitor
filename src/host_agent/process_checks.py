@@ -44,21 +44,30 @@ def check_p3d_process(process_name: str = "Prepar3D.exe") -> P3DProcessResult:
             try:
                 if proc.info["name"] and proc.info["name"].lower() == target:
                     # First call seeds the counter; interval=1 waits for a real sample
-                    cpu = proc.cpu_percent(interval=1.0)
-                    mem_info = proc.memory_info()
-                    mem_mb = mem_info.rss / (1024 * 1024)
-                    mem_pct = proc.memory_percent()
-                    hang_suspected = round(cpu, 1) == 0.0
-
-                    return P3DProcessResult(
-                        running=True,
-                        pid=proc.info["pid"],
-                        cpu_percent=round(cpu, 1),
-                        memory_mb=round(mem_mb, 1),
-                        memory_percent=round(mem_pct, 1),
-                        hang_suspected=hang_suspected,
-                    )
-            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    try:
+                        cpu = proc.cpu_percent(interval=1.0)
+                        mem_info = proc.memory_info()
+                        mem_mb = mem_info.rss / (1024 * 1024)
+                        mem_pct = proc.memory_percent()
+                        hang_suspected = round(cpu, 1) == 0.0
+                        return P3DProcessResult(
+                            running=True,
+                            pid=proc.info["pid"],
+                            cpu_percent=round(cpu, 1),
+                            memory_mb=round(mem_mb, 1),
+                            memory_percent=round(mem_pct, 1),
+                            hang_suspected=hang_suspected,
+                        )
+                    except psutil.AccessDenied:
+                        # Process is running but stats are not readable under this account
+                        logger.warning(
+                            "AccessDenied reading stats for %s (pid=%s); "
+                            "reporting as running with no stats",
+                            process_name,
+                            proc.info["pid"],
+                        )
+                        return P3DProcessResult(running=True, pid=proc.info["pid"])
+            except psutil.NoSuchProcess:
                 # Process vanished between iter and attribute access — skip it
                 continue
 
