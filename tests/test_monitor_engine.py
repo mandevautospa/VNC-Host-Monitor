@@ -160,9 +160,13 @@ def test_engine_incident_alert_then_recovery(tmp_path, monkeypatch):
     assert second["failure_count"] == 2
     assert len(send_alert_calls) == 1
 
+    # Switch to fresh heartbeat — debounce requires recovery_threshold (default 2)
+    # consecutive successes before returning to HEALTHY.
     hb_state["stale"] = False
-    recovered = engine.poll_once()[0]
+    first_recovery = engine.poll_once()[0]
+    assert first_recovery["final_status"] == HostStatus.RECOVERING
 
-    assert recovered["final_status"] == HostStatus.HEALTHY
-    assert recovered["recovered"] is True
+    second_recovery = engine.poll_once()[0]
+    assert second_recovery["final_status"] == HostStatus.HEALTHY
+    assert second_recovery["recovered"] is True
     assert len(send_recovery_calls) == 1

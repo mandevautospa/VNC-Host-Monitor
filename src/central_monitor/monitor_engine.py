@@ -13,6 +13,7 @@ from src.common.models import HostConfig, HostStatus
 from src.common.heartbeat_csv import append_poll_results, archive_day
 from src.common.graph_archiver import save_daily_graph_images
 from src.central_monitor.alerting import send_alert, send_recovery
+from src.central_monitor.debounce import DebounceThresholds, HostDebounceState, update_debounce_state
 from src.central_monitor.heartbeat_reader import read_heartbeat
 from src.central_monitor.ping_check import ping_host
 from src.central_monitor.state_evaluator import evaluate_host_status
@@ -222,15 +223,23 @@ def _check_host(host: HostConfig, stale_seconds: int) -> dict:
             )
             if hb.data:
                 d = hb.data
+                p3d_section = d.get("p3d", {}) if isinstance(d.get("p3d"), dict) else {}
                 result["host_reported"] = {
                     "status": d.get("status", "UNKNOWN"),
-                    "p3d_running": d.get("p3d", {}).get("running"),
-                    "p3d_hang_suspected": d.get("p3d", {}).get("hang_suspected"),
+                    "p3d_running": p3d_section.get("running"),
+                    "p3d_hang_suspected": p3d_section.get("hang_suspected"),
                     "cpu_percent": d.get("resources", {}).get("cpu_percent"),
                     "ram_percent": d.get("resources", {}).get("ram_percent"),
                     "disk_free_percent": d.get("resources", {}).get("disk_free_percent"),
                     "recent_app_crash_count": d.get("events", {}).get("recent_app_crash_count", 0),
                     "recent_app_hang_count": d.get("events", {}).get("recent_app_hang_count", 0),
+                    # New fields (backward-compatible: missing → "unknown")
+                    "matched_process_name": p3d_section.get("matched_process_name", "unknown"),
+                    "expected_process_names": p3d_section.get("expected_process_names", []),
+                    "p3d_detection_method": p3d_section.get("p3d_detection_method", "unknown"),
+                    "config_path_used": d.get("config_path_used", "unknown"),
+                    "heartbeat_written_to": d.get("heartbeat_written_to", "unknown"),
+                    "watchdog_version": d.get("watchdog_version", "unknown"),
                 }
         except Exception as exc:
             result["heartbeat"].update(exists=False, fresh=False, error=str(exc))
@@ -275,6 +284,9 @@ class MonitorEngine:
         self.critical_threshold = int(self.config.get("critical_alert_after_failures", 2))
         self.alert_retry_seconds = int(self.config.get("alert_retry_seconds", 60))
 
+        # Debounce / hysteresis thresholds loaded from config
+        self.debounce_thresholds = DebounceThresholds.from_config(self.config)
+
         self.failure_counts: Dict[str, int] = {h.name: 0 for h in self.hosts}
         self.previous_statuses: Dict[str, HostStatus] = {
             h.name: HostStatus.UNKNOWN for h in self.hosts
@@ -284,6 +296,11 @@ class MonitorEngine:
         }
         self.alert_sent_by_incident: Dict[str, bool] = {h.name: False for h in self.hosts}
         self.next_alert_retry_epoch: Dict[str, float] = {h.name: 0.0 for h in self.hosts}
+
+        # Per-host debounce state (one instance per host, persists across cycles)
+        self.debounce_states: Dict[str, HostDebounceState] = {
+            h.name: HostDebounceState() for h in self.hosts
+        }
 
         # Tracks the calendar date of the last successful poll cycle so that a
         # day-boundary crossing can be detected and the previous day's data
@@ -304,18 +321,75 @@ class MonitorEngine:
         for host in self.hosts:
             try:
                 result = _check_host(host, self.stale_seconds)
-                final_status = evaluate_host_status(result)
+                raw_status = evaluate_host_status(result)
 
                 if self.require_heartbeat:
                     hb = result.get("heartbeat", {})
                     if not hb.get("exists") or not hb.get("fresh"):
-                        final_status = HostStatus.HEARTBEAT_STALE
+                        raw_status = HostStatus.HEARTBEAT_STALE
                         self.logger.warning(
                             "host=%s require_heartbeat=True but heartbeat missing/stale; forcing HEARTBEAT_STALE",
                             host.name,
                         )
 
+                # Apply debounce / hysteresis layer.
+                # When require_heartbeat forces HEARTBEAT_STALE the raw_status
+                # override is already authoritative — pass it through unchanged
+                # so that callers that rely on the immediate failure signal are
+                # not broken.  Counter updates still run so state stays fresh.
+                db_state = self.debounce_states[host.name]
+                if self.require_heartbeat and raw_status == HostStatus.HEARTBEAT_STALE:
+                    # Still update internal counters; use forced status directly.
+                    update_debounce_state(
+                        host_name=host.name,
+                        check_result=result,
+                        state=db_state,
+                        thresholds=self.debounce_thresholds,
+                        raw_status=raw_status,
+                        log=self.logger,
+                    )
+                    final_status = raw_status
+                    db_state.current_debounced_status = final_status
+                else:
+                    final_status = update_debounce_state(
+                        host_name=host.name,
+                        check_result=result,
+                        state=db_state,
+                        thresholds=self.debounce_thresholds,
+                        raw_status=raw_status,
+                        log=self.logger,
+                    )
+
                 result["final_status"] = final_status
+                result["raw_status"] = raw_status
+
+                # Enrich result with debounce display metadata
+                dt = self.debounce_thresholds
+                result["debounce"] = {
+                    "consecutive_p3d_failures": db_state.consecutive_p3d_failures,
+                    "consecutive_p3d_successes": db_state.consecutive_p3d_successes,
+                    "p3d_failure_threshold": dt.p3d_failure_threshold,
+                    "p3d_recovery_threshold": dt.p3d_recovery_threshold,
+                    "consecutive_heartbeat_failures": db_state.consecutive_heartbeat_failures,
+                    "consecutive_heartbeat_successes": db_state.consecutive_heartbeat_successes,
+                    "heartbeat_failure_threshold": dt.heartbeat_failure_threshold,
+                    "heartbeat_recovery_threshold": dt.heartbeat_recovery_threshold,
+                    "consecutive_ping_failures": db_state.consecutive_ping_failures,
+                    "ping_failure_threshold": dt.ping_failure_threshold,
+                    "consecutive_vnc_failures": db_state.consecutive_vnc_failures,
+                    "vnc_failure_threshold": dt.vnc_failure_threshold,
+                    "last_matched_process_name": db_state.last_matched_process_name or "unknown",
+                    "last_config_path_used": db_state.last_config_path_used or "unknown",
+                    "last_successful_heartbeat_time": (
+                        db_state.last_successful_heartbeat_time.isoformat()
+                        if db_state.last_successful_heartbeat_time else None
+                    ),
+                    "last_status_change_time": (
+                        db_state.last_status_change_time.isoformat()
+                        if db_state.last_status_change_time else None
+                    ),
+                }
+
                 prev = self.previous_statuses[host.name]
 
                 if final_status == HostStatus.HEALTHY:
@@ -352,14 +426,24 @@ class MonitorEngine:
                 self.previous_statuses[host.name] = final_status
                 results.append(result)
 
+                hb_age = result["heartbeat"].get("age_seconds")
                 self.logger.info(
-                    "host=%-10s status=%-20s failures=%d ping=%s vnc=%s hb_fresh=%s",
+                    "host=%-10s status=%-20s raw=%-20s failures=%d "
+                    "ping=%s vnc=%s hb_fresh=%s hb_age=%s "
+                    "p3d_miss=%d/%d hb_miss=%d/%d matched=%s",
                     host.name,
                     final_status,
+                    raw_status,
                     self.failure_counts[host.name],
                     result["network"].get("ping_ok"),
                     result["network"].get("vnc_port_ok"),
                     result["heartbeat"].get("fresh"),
+                    f"{hb_age:.0f}s" if hb_age is not None else "n/a",
+                    db_state.consecutive_p3d_failures,
+                    dt.p3d_failure_threshold,
+                    db_state.consecutive_heartbeat_failures,
+                    dt.heartbeat_failure_threshold,
+                    db_state.last_matched_process_name or "unknown",
                 )
 
                 if result["should_alert"]:

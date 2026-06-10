@@ -16,19 +16,22 @@ from typing import Optional
 class HostStatus(str, Enum):
     """
     Host state priority (highest → lowest):
-      1. HOST_UNREACHABLE
-      2. HEARTBEAT_STALE
-      3. VNC_DOWN
-      4. P3D_CRASH_DETECTED
-      5. P3D_NOT_RUNNING
-      6. P3D_HANG_SUSPECTED
-      7. RESOURCE_CRITICAL
-      8. RESOURCE_WARNING
-      9. WARNING
-     10. HEALTHY
+      1. HOST_UNREACHABLE   — ping unresponsive for >= ping_failure_threshold checks
+      1a. HOST_DOWN         — heartbeat stale for >= heartbeat_failure_threshold checks
+      2. HEARTBEAT_STALE    — heartbeat file exists but is too old (single-cycle)
+      3. VNC_DOWN           — TCP port closed / banner wrong
+      4. P3D_CRASH_DETECTED — recent Application Error events
+      5. P3D_NOT_RUNNING    — Prepar3D.exe absent for >= p3d_failure_threshold checks
+      6. P3D_HANG_SUSPECTED — hang flag or recent hang events
+      7. RESOURCE_CRITICAL  — CPU/RAM/disk above critical threshold
+      8. RESOURCE_WARNING   — CPU/RAM/disk above warning threshold
+      9. WARNING            — intermediate debounce state (1-2 failed checks)
+     10. RECOVERING         — recently returned from failure, awaiting recovery_threshold
+     11. HEALTHY
     """
 
     HOST_UNREACHABLE = "HOST_UNREACHABLE"
+    HOST_DOWN = "HOST_DOWN"
     HEARTBEAT_STALE = "HEARTBEAT_STALE"
     VNC_DOWN = "VNC_DOWN"
     P3D_CRASH_DETECTED = "P3D_CRASH_DETECTED"
@@ -39,6 +42,7 @@ class HostStatus(str, Enum):
     RESOURCE_WARNING = "RESOURCE_WARNING"
     CRITICAL = "CRITICAL"
     WARNING = "WARNING"
+    RECOVERING = "RECOVERING"
     RECOVERED = "RECOVERED"
     HEALTHY = "HEALTHY"
     UNKNOWN = "UNKNOWN"

@@ -15,11 +15,11 @@ import json
 import logging
 import os
 from datetime import datetime, timezone
-from typing import List
+from typing import List, Optional
 
 logger = logging.getLogger(__name__)
 
-WATCHDOG_VERSION = "0.1.0"
+WATCHDOG_VERSION = "0.2.0"
 
 
 def write_heartbeat(
@@ -31,29 +31,36 @@ def write_heartbeat(
     resources: dict,
     events: dict,
     errors: List[str],
+    *,
+    config_path_used: Optional[str] = None,
 ) -> bool:
     """
     Assemble and atomically write a heartbeat JSON file.
 
     Args:
-        host_name:   Identifier written into the "host" field (e.g. "host-01").
-        output_path: Full path where the file should land (may be a UNC path).
-        status:      Local status string from classify_local_status().
-        p3d:         Dict of P3D process fields.
-        tightvnc:    Dict of TightVNC service fields.
-        resources:   Dict of CPU/RAM/disk fields.
-        events:      Dict of event-log summary fields.
-        errors:      List of non-fatal error strings collected during the run.
+        host_name:        Identifier written into the "host" field (e.g. "host-01").
+        output_path:      Full path where the file should land (may be a UNC path).
+        status:           Local status string from classify_local_status().
+        p3d:              Dict of P3D process fields.  Should include
+                          ``expected_process_names`` and ``matched_process_name``
+                          so the central monitor can display them.
+        tightvnc:         Dict of TightVNC service fields.
+        resources:        Dict of CPU/RAM/disk fields.
+        events:           Dict of event-log summary fields.
+        errors:           List of non-fatal error strings collected during the run.
+        config_path_used: Path to the watchdog config file that was loaded.
 
     Returns:
         True if the file was written successfully, False otherwise.
     """
     heartbeat = {
-        "schema_version": "1.0",
+        "schema_version": "1.1",
         "host": host_name,
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "watchdog_version": WATCHDOG_VERSION,
         "status": status,
+        "config_path_used": config_path_used or "unknown",
+        "heartbeat_written_to": output_path,
         "p3d": p3d,
         "tightvnc": tightvnc,
         "resources": resources,
