@@ -368,7 +368,7 @@ class MonitorEngine:
             "Monitor engine initialized. Monitoring %d host(s). Interval: %ds. DIS monitoring: %s.",
             len(self.hosts),
             self.interval,
-            "enabled" if (self.dis_config and self.dis_config.get("enabled")) else "disabled",
+            "enabled" if (self.dis_config and self.dis_config.get("enabled", True)) else "disabled",
         )
 
     def poll_once(self) -> List[dict]:
