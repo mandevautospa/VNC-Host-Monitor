@@ -16,14 +16,16 @@ from pathlib import Path
 
 import pandas as pd
 
+from src.common.app_paths import get_app_root
+
 _logger = logging.getLogger(__name__)
 
 
-# Absolute path resolved from this file's location so callers don't need
-# to worry about the working directory.
-DEFAULT_CSV_PATH: Path = (
-    Path(__file__).resolve().parents[2] / "analysis" / "heartbeat_metrics.csv"
-)
+# Resolved via get_app_root() so the path remains stable whether the application
+# is run from source or packaged as a PyInstaller frozen executable.  When frozen,
+# Path(__file__) points to a temporary extraction directory that is recreated on
+# every launch; get_app_root() returns the directory containing the .exe instead.
+DEFAULT_CSV_PATH: Path = get_app_root() / "analysis" / "heartbeat_metrics.csv"
 
 _NUMERIC_COLUMNS = [
     "host_cpu_percent",
