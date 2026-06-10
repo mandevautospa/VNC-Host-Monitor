@@ -37,6 +37,7 @@ from src.host_agent.event_log_checks import check_event_logs
 from src.host_agent.heartbeat_writer import write_heartbeat
 
 _DEFAULT_CONFIG = Path(r"C:\P3DWatchdog\config.json")
+_UNKNOWN = "unknown"
 
 
 def _load_config(path: str | Path) -> dict:
@@ -124,7 +125,7 @@ def _run_once(config: dict, config_path: str, logger: logging.Logger) -> None:
         "process_name": p3d_names[0] if len(p3d_names) == 1 else p3d_names,
         "expected_process_names": list(p3d_names),
         "running": p3d.running,
-        "matched_process_name": p3d.matched_process_name or "unknown",
+        "matched_process_name": p3d.matched_process_name or _UNKNOWN,
         "p3d_detection_method": "psutil_name_match",
         "pid": p3d.pid,
         "cpu_percent": p3d.cpu_percent,

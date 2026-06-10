@@ -301,6 +301,7 @@ def _compute_debounced_status(
         reason = _build_reason(
             old_status, new_status, state, thresholds,
             ping_ok=ping_ok, hb_fresh=hb_fresh, hb_exists=hb_exists, p3d_running=p3d_running,
+            hb_age=hb_age,
         )
         _log_transition(host_name, old_status, new_status, reason, state, hb_age, thresholds, log)
         state.last_status_change_time = now
@@ -406,9 +407,11 @@ def _build_reason(
     hb_fresh: bool,
     hb_exists: bool,
     p3d_running: Optional[bool],
+    hb_age: Optional[float],
 ) -> str:
     """Compose a human-readable reason string for a status transition."""
     proc = state.last_matched_process_name or "unknown"
+    hb_age_str = f"{hb_age:.0f}s" if hb_age is not None else "unknown"
 
     if new == HostStatus.HOST_UNREACHABLE:
         return (
@@ -431,7 +434,7 @@ def _build_reason(
         return (
             f"P3D missing for {state.consecutive_p3d_failures} consecutive checks "
             f"(threshold={thresholds.p3d_failure_threshold}), "
-            f"heartbeat_age=unknown"
+            f"heartbeat_age={hb_age_str}"
         )
     if new == HostStatus.WARNING:
         if not ping_ok:
