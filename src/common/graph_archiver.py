@@ -12,10 +12,9 @@ from datetime import date
 from pathlib import Path
 
 import matplotlib.dates as mdates
-from matplotlib.backends.backend_agg import FigureCanvasAgg
 from matplotlib.figure import Figure
 
-from src.common.heartbeat_csv import DEFAULT_CSV_PATH, load_day_history
+from src.common.heartbeat_csv import DEFAULT_CSV_PATH, load_day_history, load_heartbeat_history
 
 _logger = logging.getLogger(__name__)
 
@@ -67,8 +66,6 @@ def save_daily_graph_images(
     archive_dir = Path(archive_dir)
 
     # Load data for all hosts on this date.
-    from src.common.heartbeat_csv import load_heartbeat_history  # local import avoids circularity
-
     archive_path = archive_dir / f"{target_date.isoformat()}_heartbeat_metrics.csv"
     if archive_path.exists():
         all_df = load_heartbeat_history(csv_path=archive_path)
@@ -122,8 +119,6 @@ def save_daily_graph_images(
             lbl.set_horizontalalignment("right")
 
         fig.tight_layout()
-
-        FigureCanvasAgg(fig).draw()
 
         out_path = output_dir / f"{date_str}_{host}_cpu_ram.png"
         fig.savefig(out_path)
