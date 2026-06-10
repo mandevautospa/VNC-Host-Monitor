@@ -11,7 +11,7 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import matplotlib.dates as mdates
 from matplotlib.figure import Figure
 
-from src.common.heartbeat_csv import DEFAULT_CSV_PATH, load_heartbeat_history
+from src.common.heartbeat_csv import DEFAULT_CSV_PATH, load_heartbeat_history, load_day_history
 
 
 # ---------------------------------------------------------------------------
@@ -21,10 +21,6 @@ from src.common.heartbeat_csv import DEFAULT_CSV_PATH, load_heartbeat_history
 
 #: Width of the rolling live-graph window (minutes).
 LIVE_GRAPH_WINDOW_MINUTES: int = 30
-
-#: Date used when opening the full-day popup.  ``"today"`` uses the current
-#: calendar date; any ISO date string (``"YYYY-MM-DD"``) selects a fixed day.
-DAILY_GRAPH_DATE_MODE: str = "today"
 
 
 _MIN_PLOT_ROWS = 2
@@ -236,56 +232,117 @@ class LiveTrendsFrame(ttk.Frame):
 class DailyGraphWindow:
     """Read-only popup showing one host's full-day CPU/RAM history.
 
-    Opens as a ``tk.Toplevel`` containing a larger matplotlib figure with all
-    samples collected for ``DAILY_GRAPH_DATE_MODE`` (default: today).  The
-    plot mirrors the style of ``analysis/plot_heartbeat_trends.py`` so every
-    collected sample is visible – no rolling window is applied.
+    Opens as a ``tk.Toplevel`` with navigation buttons to browse any
+    calendar date.  Data for past days is loaded from the per-day archive
+    CSVs in ``analysis/archive/`` (written automatically at midnight by
+    ``MonitorEngine``); today's data is read directly from the live
+    ``analysis/heartbeat_metrics.csv``.
+
+    The plot mirrors the style of ``analysis/plot_heartbeat_trends.py`` so
+    every collected sample is visible – no rolling window is applied.
     """
 
     def __init__(self, parent, host_name: str, csv_path: Path) -> None:
         self.host_name = host_name
         self.csv_path = csv_path
+        self.selected_date = date.today()
 
         self.top = tk.Toplevel(parent)
         self.top.title(f"Full-Day Graph — {host_name}")
         self.top.geometry("1100x580")
         self.top.resizable(True, True)
 
+        self._canvas: FigureCanvasTkAgg | None = None
         self._build_ui()
+        self._load_for_date(self.selected_date)
 
     def _build_ui(self) -> None:
-        today_str = date.today().strftime("%Y-%m-%d")
-
-        # Header bar
+        # ── Header bar ────────────────────────────────────────────────────
         header = ttk.Frame(self.top)
         header.pack(fill="x", padx=10, pady=8)
 
         ttk.Label(
             header,
-            text=f"Full-Day Resource Trends — {self.host_name}  ({today_str})",
+            text=f"Full-Day Resource Trends — {self.host_name}",
             font=("Segoe UI", 13, "bold"),
         ).pack(side="left")
 
-        df = load_heartbeat_history(
-            csv_path=self.csv_path,
-            host=self.host_name,
-            date=DAILY_GRAPH_DATE_MODE,
+        # Navigation: prev / date label / next
+        nav_frame = ttk.Frame(header)
+        nav_frame.pack(side="left", padx=(16, 0))
+
+        ttk.Button(nav_frame, text="◀ Prev", width=7, command=self._prev_day).pack(
+            side="left"
+        )
+        self.date_label = ttk.Label(
+            nav_frame, text="", font=("Segoe UI", 11), width=12, anchor="center"
+        )
+        self.date_label.pack(side="left", padx=6)
+        self.next_btn = ttk.Button(
+            nav_frame, text="Next ▶", width=7, command=self._next_day
+        )
+        self.next_btn.pack(side="left")
+
+        self.sample_label = ttk.Label(header, text="")
+        self.sample_label.pack(side="right")
+
+        # ── Graph area ────────────────────────────────────────────────────
+        self.graph_frame = ttk.Frame(self.top)
+        self.graph_frame.pack(fill="both", expand=True, padx=10, pady=(0, 10))
+
+        self.no_data_label = ttk.Label(
+            self.graph_frame,
+            text="",
+            font=("Segoe UI", 11),
         )
 
+    # ------------------------------------------------------------------
+    # Navigation helpers
+    # ------------------------------------------------------------------
+
+    def _prev_day(self) -> None:
+        self.selected_date -= timedelta(days=1)
+        self._load_for_date(self.selected_date)
+
+    def _next_day(self) -> None:
+        candidate = self.selected_date + timedelta(days=1)
+        if candidate <= date.today():
+            self.selected_date = candidate
+            self._load_for_date(self.selected_date)
+
+    # ------------------------------------------------------------------
+    # Data loading / rendering
+    # ------------------------------------------------------------------
+
+    def _load_for_date(self, target_date: date) -> None:
+        """Replace the graph content with data for *target_date*."""
+        date_str = target_date.isoformat()
+        self.date_label.config(text=date_str)
+
+        # Disable next button when already on today.
+        if target_date >= date.today():
+            self.next_btn.configure(state="disabled")
+        else:
+            self.next_btn.configure(state="normal")
+
+        # Tear down the previous canvas (if any).
+        if self._canvas is not None:
+            self._canvas.get_tk_widget().destroy()
+            self._canvas = None
+        self.no_data_label.pack_forget()
+
+        df = load_day_history(target_date, host=self.host_name, csv_path=self.csv_path)
+
         if df.empty or len(df) < _MIN_PLOT_ROWS:
-            ttk.Label(
-                self.top,
-                text="Not enough data collected for today's full graph yet.",
-                font=("Segoe UI", 11),
-            ).pack(expand=True)
+            self.no_data_label.config(
+                text=f"No data available for {date_str}."
+            )
+            self.no_data_label.pack(expand=True)
+            self.sample_label.config(text="0 samples")
             return
 
-        ttk.Label(
-            header,
-            text=f"{len(df)} samples",
-        ).pack(side="right")
+        self.sample_label.config(text=f"{len(df)} samples")
 
-        # Convert timestamps to local naive for correct x-axis labels.
         local_ts = _to_local_naive(df["heartbeat_timestamp"])
 
         fig = Figure(figsize=(12, 5.5), dpi=100)
@@ -294,7 +351,7 @@ class DailyGraphWindow:
         ax.plot(local_ts, df["host_cpu_percent"], label="Host CPU %", linewidth=0.9)
         ax.plot(local_ts, df["host_ram_percent"], label="Host RAM %", linewidth=0.9)
 
-        ax.set_title(f"Host CPU and RAM usage — {self.host_name}  ({today_str})")
+        ax.set_title(f"Host CPU and RAM usage — {self.host_name}  ({date_str})")
         ax.set_xlabel("Time (local)")
         ax.set_ylabel("Percent")
         ax.set_ylim(0, 100)
@@ -310,6 +367,6 @@ class DailyGraphWindow:
 
         fig.tight_layout()
 
-        canvas = FigureCanvasTkAgg(fig, master=self.top)
-        canvas.get_tk_widget().pack(fill="both", expand=True, padx=10, pady=(0, 10))
-        canvas.draw()
+        self._canvas = FigureCanvasTkAgg(fig, master=self.graph_frame)
+        self._canvas.get_tk_widget().pack(fill="both", expand=True)
+        self._canvas.draw()

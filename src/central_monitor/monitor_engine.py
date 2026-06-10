@@ -5,12 +5,13 @@ from __future__ import annotations
 import json
 import logging
 import time
-from datetime import datetime, time as dt_time, timezone
+from datetime import date, datetime, time as dt_time, timezone
 from pathlib import Path
 from typing import Dict, List, Sequence
 
 from src.common.models import HostConfig, HostStatus
-from src.common.heartbeat_csv import append_poll_results
+from src.common.heartbeat_csv import append_poll_results, archive_day
+from src.common.graph_archiver import save_daily_graph_images
 from src.central_monitor.alerting import send_alert, send_recovery
 from src.central_monitor.heartbeat_reader import read_heartbeat
 from src.central_monitor.ping_check import ping_host
@@ -284,6 +285,11 @@ class MonitorEngine:
         self.alert_sent_by_incident: Dict[str, bool] = {h.name: False for h in self.hosts}
         self.next_alert_retry_epoch: Dict[str, float] = {h.name: 0.0 for h in self.hosts}
 
+        # Tracks the calendar date of the last successful poll cycle so that a
+        # day-boundary crossing can be detected and the previous day's data
+        # archived automatically.
+        self._last_polled_date: datetime.date | None = None
+
         self.logger = logger or logging.getLogger("central_monitor")
         self.logger.info(
             "Monitor engine initialized. Monitoring %d host(s). Interval: %ds.",
@@ -389,4 +395,39 @@ class MonitorEngine:
         except Exception as exc:
             self.logger.warning("Failed to write heartbeat metrics to CSV: %s", exc)
 
+        self._maybe_archive_previous_day()
+
         return results
+
+    def _maybe_archive_previous_day(self) -> None:
+        """Archive the previous day's data when the calendar date has changed.
+
+        On each call the current local date is compared to ``_last_polled_date``.
+        When a day boundary has been crossed the completed day's rows are written
+        to ``analysis/archive/YYYY-MM-DD_heartbeat_metrics.csv`` and a full-day
+        PNG graph image is saved to ``analysis/plots/daily/`` for each host.
+
+        Both operations are wrapped in individual try/except blocks so a failure
+        in one does not prevent the other from running.
+        """
+        today = date.today()
+        if self._last_polled_date is not None and self._last_polled_date != today:
+            prev = self._last_polled_date
+            self.logger.info(
+                "Day boundary crossed (%s → %s): archiving previous day's data.", prev, today
+            )
+            try:
+                archived = archive_day(prev)
+                if archived:
+                    self.logger.info("Day archive written: %s", archived)
+            except Exception as exc:
+                self.logger.warning("Failed to archive day %s: %s", prev, exc)
+
+            try:
+                images = save_daily_graph_images(prev)
+                for img in images:
+                    self.logger.info("Daily graph image saved: %s", img)
+            except Exception as exc:
+                self.logger.warning("Failed to save daily graph images for %s: %s", prev, exc)
+
+        self._last_polled_date = today
