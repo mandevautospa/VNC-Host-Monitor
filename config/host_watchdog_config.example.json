@@ -1,6 +1,12 @@
 {
   "host_name": "host-01",
   "p3d_process_name": "Prepar3D.exe",
+  "expected_process_names": [
+    "Prepar3D.exe",
+    "prepar3d.exe",
+    "Prepar3D",
+    "prepar3d"
+  ],
   "tightvnc_service_name": "tvnserver",
 
   "heartbeat_output_path": "\\\\CONFLAG\\P3DHealth\\host-01.json",

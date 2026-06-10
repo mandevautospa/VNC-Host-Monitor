@@ -30,7 +30,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from src.common.logging_setup import setup_logger
 from src.common.thresholds import Thresholds, evaluate_cpu, evaluate_ram, evaluate_disk
-from src.host_agent.process_checks import check_p3d_process
+from src.host_agent.process_checks import P3D_EXPECTED_NAMES, check_p3d_process
 from src.host_agent.resource_checks import check_resources
 from src.host_agent.service_checks import check_service
 from src.host_agent.event_log_checks import check_event_logs
@@ -76,10 +76,13 @@ def _classify_local_status(
     return "HEALTHY"
 
 
-def _run_once(config: dict, logger: logging.Logger) -> None:
+def _run_once(config: dict, config_path: str, logger: logging.Logger) -> None:
     """Execute one complete watchdog check cycle and write the heartbeat."""
     host_name   = config["host_name"]
-    p3d_name    = config.get("p3d_process_name", "Prepar3D.exe")
+    # Support a list of process names or fall back to the single legacy key
+    p3d_names = config.get("expected_process_names") or [
+        config.get("p3d_process_name", "Prepar3D.exe")
+    ]
     vnc_service = config.get("tightvnc_service_name", "tvnserver")
     lookback    = config.get("event_lookback_minutes", 10)
     disk_path   = config.get("disk_path", "C:\\")
@@ -91,7 +94,7 @@ def _run_once(config: dict, logger: logging.Logger) -> None:
     logger.info("Watchdog run start — host=%s", host_name)
 
     # ── Checks ──────────────────────────────────────────────────────────────
-    p3d = check_p3d_process(p3d_name)
+    p3d = check_p3d_process(p3d_names)
     if p3d.error:
         errors.append(f"P3D process check error: {p3d.error}")
 
@@ -118,8 +121,11 @@ def _run_once(config: dict, logger: logging.Logger) -> None:
 
     # ── Build heartbeat payload ──────────────────────────────────────────────
     p3d_data = {
-        "process_name": p3d_name,
+        "process_name": p3d_names[0] if len(p3d_names) == 1 else p3d_names,
+        "expected_process_names": list(p3d_names),
         "running": p3d.running,
+        "matched_process_name": p3d.matched_process_name or "unknown",
+        "p3d_detection_method": "psutil_name_match",
         "pid": p3d.pid,
         "cpu_percent": p3d.cpu_percent,
         "memory_mb": p3d.memory_mb,
@@ -147,11 +153,22 @@ def _run_once(config: dict, logger: logging.Logger) -> None:
         "recent_events_summary": events.recent_events_summary,
     }
 
-    write_heartbeat(host_name, output_path, status, p3d_data, vnc_data, res_data, events_data, errors)
+    write_heartbeat(
+        host_name,
+        output_path,
+        status,
+        p3d_data,
+        vnc_data,
+        res_data,
+        events_data,
+        errors,
+        config_path_used=str(config_path),
+    )
 
     logger.info(
-        "host=%s status=%s p3d=%s cpu=%.1f%% ram=%.1f%% disk_free=%.1f%% errors=%d",
+        "host=%s status=%s p3d=%s matched=%s cpu=%.1f%% ram=%.1f%% disk_free=%.1f%% errors=%d",
         host_name, status, p3d.running,
+        p3d.matched_process_name or "none",
         resources.cpu_percent, resources.ram_percent, resources.disk_free_percent,
         len(errors),
     )
@@ -169,7 +186,7 @@ def main() -> None:
 
     while True:
         try:
-            _run_once(config, logger)
+            _run_once(config, str(config_path), logger)
         except Exception as exc:
             logger.error("Unhandled error in watchdog run: %s", exc, exc_info=True)
         time.sleep(interval)
