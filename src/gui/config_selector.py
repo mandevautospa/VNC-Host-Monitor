@@ -9,12 +9,7 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 from typing import Optional, Tuple
 
-
-def get_app_root() -> Path:
-    """Return the application root for source runs or the executable folder when packaged."""
-    if getattr(sys, "frozen", False):
-        return Path(sys.executable).resolve().parent
-    return Path(__file__).resolve().parents[2]
+from src.common.app_paths import get_app_root
 
 
 def resolve_config_path(path_text: str) -> Path:

@@ -331,7 +331,13 @@ class DailyGraphWindow:
             self._canvas = None
         self.no_data_label.pack_forget()
 
-        df = load_day_history(target_date, host=self.host_name, csv_path=self.csv_path)
+        try:
+            df = load_day_history(target_date, host=self.host_name, csv_path=self.csv_path)
+        except Exception as exc:
+            self.no_data_label.config(text=f"Error loading data for {date_str}: {exc}")
+            self.no_data_label.pack(expand=True)
+            self.sample_label.config(text="error")
+            return
 
         if df.empty or len(df) < _MIN_PLOT_ROWS:
             self.no_data_label.config(
