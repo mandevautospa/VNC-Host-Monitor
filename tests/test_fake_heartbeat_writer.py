@@ -20,6 +20,8 @@ def test_fake_heartbeat_payload_matches_schema():
     assert payload["p3d"]["running"] is True
     assert payload["tightvnc"]["service_running"] is True
     assert payload["resources"]["cpu_percent"] == 20.0
+    assert payload["resources"]["gpu_percent"] == 16.0
+    assert payload["resources"]["vram_percent"] == 28.0
     assert payload["events"]["recent_app_crash_count"] == 0
     assert payload["errors"] == []
 

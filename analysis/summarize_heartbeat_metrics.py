@@ -7,6 +7,10 @@ df = pd.read_csv(CSV_PATH)
 numeric_columns = [
     "host_cpu_percent",
     "host_ram_percent",
+    "host_gpu_percent",
+    "host_vram_percent",
+    "host_vram_used_mb",
+    "host_vram_total_mb",
     "disk_free_percent",
     "disk_free_gb",
     "p3d_cpu_percent",
@@ -25,6 +29,15 @@ print(df.groupby("host")["host_cpu_percent"].max().sort_values(ascending=False))
 
 print("\nPeak host RAM by host:")
 print(df.groupby("host")["host_ram_percent"].max().sort_values(ascending=False))
+
+print("\nPeak host GPU by host:")
+print(df.groupby("host")["host_gpu_percent"].max().sort_values(ascending=False))
+
+print("\nPeak host VRAM percent by host:")
+print(df.groupby("host")["host_vram_percent"].max().sort_values(ascending=False))
+
+print("\nPeak host VRAM used MB by host:")
+print(df.groupby("host")["host_vram_used_mb"].max().sort_values(ascending=False))
 
 print("\nLowest disk free percent by host:")
 print(df.groupby("host")["disk_free_percent"].min().sort_values())

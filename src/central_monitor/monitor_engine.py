@@ -244,6 +244,10 @@ def _check_host(
                     "cpu_percent": d.get("resources", {}).get("cpu_percent"),
                     "ram_percent": d.get("resources", {}).get("ram_percent"),
                     "disk_free_percent": d.get("resources", {}).get("disk_free_percent"),
+                    "gpu_percent": d.get("resources", {}).get("gpu_percent"),
+                    "vram_percent": d.get("resources", {}).get("vram_percent"),
+                    "vram_used_mb": d.get("resources", {}).get("vram_used_mb"),
+                    "vram_total_mb": d.get("resources", {}).get("vram_total_mb"),
                     "recent_app_crash_count": d.get("events", {}).get("recent_app_crash_count", 0),
                     "recent_app_hang_count": d.get("events", {}).get("recent_app_hang_count", 0),
                     # New fields (backward-compatible: missing → "unknown")

@@ -8,7 +8,7 @@ Monitor:
 - TightVNC availability
 - Prepar3D process health
 - Windows crash/hang events
-- CPU/RAM/disk usage
+- CPU/RAM/GPU/VRAM/disk usage (GPU/VRAM optional when telemetry is unavailable)
 - Heartbeat freshness
 - Alert/recovery state
 
@@ -33,7 +33,7 @@ Central monitor responsibilities:
 Host watchdog responsibilities:
 - Check Prepar3D.exe process
 - Check TightVNC service (tvnserver)
-- Check CPU/RAM/disk
+- Check CPU/RAM/GPU/VRAM/disk (GPU/VRAM best-effort)
 - Query recent Windows event logs
 - Write heartbeat JSON every 30 seconds
 - Write local log
@@ -161,7 +161,7 @@ Threshold defaults:
 - Central banner check expects prefix RFB
 - Host checks P3D process running + CPU + memory
 - Host checks TightVNC service running
-- Host checks CPU/RAM/disk resources
+- Host checks CPU/RAM/GPU/VRAM/disk resources (GPU/VRAM optional)
 - Host checks recent event logs (1000, 1001, 1002 + display-related errors)
 - Host writes heartbeat every 30 seconds
 - Central marks heartbeat stale if older than 90 seconds
@@ -184,6 +184,9 @@ Must include:
 - resources
 - events
 - errors
+
+`resources` includes CPU/RAM/disk and may also include `gpu_percent`, `vram_percent`,
+`vram_used_mb`, and `vram_total_mb` when GPU telemetry is available.
 
 ### 7.2 Central merged result (in-memory per host)
 Must include:

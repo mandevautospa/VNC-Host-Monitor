@@ -21,6 +21,10 @@ _FIELDNAMES = [
     "host",
     "host_cpu_percent",
     "host_ram_percent",
+    "host_gpu_percent",
+    "host_vram_percent",
+    "host_vram_used_mb",
+    "host_vram_total_mb",
     "disk_free_percent",
     "disk_free_gb",
     "p3d_cpu_percent",
@@ -45,6 +49,10 @@ def _row(host: str, ts: datetime, cpu: float, ram: float) -> dict:
         "host": host,
         "host_cpu_percent": cpu,
         "host_ram_percent": ram,
+        "host_gpu_percent": 15.0,
+        "host_vram_percent": 25.0,
+        "host_vram_used_mb": 1024.0,
+        "host_vram_total_mb": 4096.0,
         "disk_free_percent": 50.0,
         "disk_free_gb": 100.0,
         "p3d_cpu_percent": 5.0,
@@ -178,6 +186,10 @@ def _make_poll_result(
             "resources": {
                 "cpu_percent": cpu,
                 "ram_percent": ram,
+                "gpu_percent": 18.0,
+                "vram_percent": 30.0,
+                "vram_used_mb": 1200.0,
+                "vram_total_mb": 4000.0,
                 "disk_free_percent": 60.0,
                 "disk_free_gb": 120.0,
             },
@@ -230,6 +242,8 @@ def test_append_poll_results_creates_csv(tmp_path):
     assert len(df) == 1
     assert df.iloc[0]["host_cpu_percent"] == 30.0
     assert df.iloc[0]["host_ram_percent"] == 55.0
+    assert df.iloc[0]["host_gpu_percent"] == 18.0
+    assert df.iloc[0]["host_vram_percent"] == 30.0
 
 
 def test_append_poll_results_deduplicates(tmp_path):
@@ -458,4 +472,3 @@ def test_load_day_history_returns_empty_when_no_data(tmp_path):
     # Request a different date that has no data.
     df = load_day_history(datetime(2024, 1, 1).date(), csv_path=csv_file, archive_dir=archive_dir)
     assert df.empty
-

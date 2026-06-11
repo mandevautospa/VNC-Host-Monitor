@@ -24,15 +24,17 @@ for host in sorted(df["host"].dropna().unique()):
     plt.figure(figsize=(12, 6))
     plt.plot(host_df["heartbeat_timestamp"], host_df["host_cpu_percent"], label="Host CPU %")
     plt.plot(host_df["heartbeat_timestamp"], host_df["host_ram_percent"], label="Host RAM %")
+    plt.plot(host_df["heartbeat_timestamp"], host_df["host_gpu_percent"], label="Host GPU %")
+    plt.plot(host_df["heartbeat_timestamp"], host_df["host_vram_percent"], label="Host VRAM %")
 
-    plt.title(f"Host CPU and RAM usage over time — {host}")
+    plt.title(f"Host CPU/RAM/GPU/VRAM usage over time — {host}")
     plt.xlabel("Time")
     plt.ylabel("Percent")
     plt.legend()
     plt.xticks(rotation=45)
     plt.tight_layout()
 
-    output_path = OUTPUT_DIR / f"{host}_host_cpu_ram_trend.png"
+    output_path = OUTPUT_DIR / f"{host}_host_cpu_ram_gpu_vram_trend.png"
     plt.savefig(output_path)
     plt.close()
 

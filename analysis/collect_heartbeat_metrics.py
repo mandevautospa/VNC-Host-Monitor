@@ -56,6 +56,10 @@ def parse_heartbeat(path):
         # Whole-host/server metrics
         "host_cpu_percent": get_nested(data, "resources", "cpu_percent"),
         "host_ram_percent": get_nested(data, "resources", "ram_percent"),
+        "host_gpu_percent": get_nested(data, "resources", "gpu_percent"),
+        "host_vram_percent": get_nested(data, "resources", "vram_percent"),
+        "host_vram_used_mb": get_nested(data, "resources", "vram_used_mb"),
+        "host_vram_total_mb": get_nested(data, "resources", "vram_total_mb"),
         "disk_free_percent": get_nested(data, "resources", "disk_free_percent"),
         "disk_free_gb": get_nested(data, "resources", "disk_free_gb"),
 
@@ -93,6 +97,10 @@ def collect_once():
         "status",
         "host_cpu_percent",
         "host_ram_percent",
+        "host_gpu_percent",
+        "host_vram_percent",
+        "host_vram_used_mb",
+        "host_vram_total_mb",
         "disk_free_percent",
         "disk_free_gb",
         "p3d_running",
