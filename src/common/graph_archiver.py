@@ -103,8 +103,20 @@ def save_daily_graph_images(
 
         ax.plot(ts_series, host_df["host_cpu_percent"], label="Host CPU %", linewidth=0.9)
         ax.plot(ts_series, host_df["host_ram_percent"], label="Host RAM %", linewidth=0.9)
-        ax.plot(ts_series, host_df["host_gpu_percent"], label="Host GPU %", linewidth=0.9)
-        ax.plot(ts_series, host_df["host_vram_percent"], label="Host VRAM %", linewidth=0.9)
+        gpu_mask = host_df["host_gpu_percent"].notna()
+        vram_mask = host_df["host_vram_percent"].notna()
+        ax.plot(
+            ts_series[gpu_mask],
+            host_df.loc[gpu_mask, "host_gpu_percent"],
+            label="Host GPU %",
+            linewidth=0.9,
+        )
+        ax.plot(
+            ts_series[vram_mask],
+            host_df.loc[vram_mask, "host_vram_percent"],
+            label="Host VRAM %",
+            linewidth=0.9,
+        )
 
         ax.set_title(f"Host CPU/RAM/GPU/VRAM usage — {host}  ({date_str})")
         ax.set_xlabel("Time (local)")

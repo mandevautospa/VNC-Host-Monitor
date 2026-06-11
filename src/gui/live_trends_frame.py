@@ -181,8 +181,14 @@ class LiveTrendsFrame(ttk.Frame):
         timestamps = local_ts.tolist()
         cpu_values = df["host_cpu_percent"].tolist()
         ram_values = df["host_ram_percent"].tolist()
-        gpu_values = df["host_gpu_percent"].tolist()
-        vram_values = df["host_vram_percent"].tolist()
+        gpu_values = [
+            (None if pd.isna(value) else float(value))
+            for value in df["host_gpu_percent"].tolist()
+        ]
+        vram_values = [
+            (None if pd.isna(value) else float(value))
+            for value in df["host_vram_percent"].tolist()
+        ]
 
         self.cpu_line.set_data(timestamps, cpu_values)
         self.ram_line.set_data(timestamps, ram_values)

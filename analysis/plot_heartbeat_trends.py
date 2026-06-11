@@ -24,8 +24,18 @@ for host in sorted(df["host"].dropna().unique()):
     plt.figure(figsize=(12, 6))
     plt.plot(host_df["heartbeat_timestamp"], host_df["host_cpu_percent"], label="Host CPU %")
     plt.plot(host_df["heartbeat_timestamp"], host_df["host_ram_percent"], label="Host RAM %")
-    plt.plot(host_df["heartbeat_timestamp"], host_df["host_gpu_percent"], label="Host GPU %")
-    plt.plot(host_df["heartbeat_timestamp"], host_df["host_vram_percent"], label="Host VRAM %")
+    gpu_mask = host_df["host_gpu_percent"].notna()
+    vram_mask = host_df["host_vram_percent"].notna()
+    plt.plot(
+        host_df.loc[gpu_mask, "heartbeat_timestamp"],
+        host_df.loc[gpu_mask, "host_gpu_percent"],
+        label="Host GPU %",
+    )
+    plt.plot(
+        host_df.loc[vram_mask, "heartbeat_timestamp"],
+        host_df.loc[vram_mask, "host_vram_percent"],
+        label="Host VRAM %",
+    )
 
     plt.title(f"Host CPU/RAM/GPU/VRAM usage over time — {host}")
     plt.xlabel("Time")
