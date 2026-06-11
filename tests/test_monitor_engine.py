@@ -88,6 +88,8 @@ def test_poll_once_returns_dashboard_result_shape(tmp_path, monkeypatch):
     assert "network" in result
     assert "heartbeat" in result
     assert "host_reported" in result
+    assert "gpu_percent" in result["host_reported"]
+    assert "vram_percent" in result["host_reported"]
     assert result["final_status"] == HostStatus.HEALTHY
     assert result["failure_count"] == 0
     assert result["should_alert"] is False

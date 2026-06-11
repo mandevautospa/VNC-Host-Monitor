@@ -30,6 +30,10 @@ DEFAULT_CSV_PATH: Path = get_app_root() / "analysis" / "heartbeat_metrics.csv"
 _NUMERIC_COLUMNS = [
     "host_cpu_percent",
     "host_ram_percent",
+    "host_gpu_percent",
+    "host_vram_percent",
+    "host_vram_used_mb",
+    "host_vram_total_mb",
     "disk_free_percent",
     "disk_free_gb",
     "p3d_cpu_percent",
@@ -101,6 +105,8 @@ def load_heartbeat_history(
     for col in _NUMERIC_COLUMNS:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="coerce")
+        else:
+            df[col] = pd.NA
 
     df = df.dropna(subset=["heartbeat_timestamp"])
     df = df.sort_values("heartbeat_timestamp").reset_index(drop=True)
@@ -138,6 +144,10 @@ _CSV_FIELDNAMES = [
     "status",
     "host_cpu_percent",
     "host_ram_percent",
+    "host_gpu_percent",
+    "host_vram_percent",
+    "host_vram_used_mb",
+    "host_vram_total_mb",
     "disk_free_percent",
     "disk_free_gb",
     "p3d_running",
@@ -198,6 +208,10 @@ def _row_from_poll_result(result: dict) -> dict | None:
         "status": data.get("status", ""),
         "host_cpu_percent": _nested(data, "resources", "cpu_percent"),
         "host_ram_percent": _nested(data, "resources", "ram_percent"),
+        "host_gpu_percent": _nested(data, "resources", "gpu_percent"),
+        "host_vram_percent": _nested(data, "resources", "vram_percent"),
+        "host_vram_used_mb": _nested(data, "resources", "vram_used_mb"),
+        "host_vram_total_mb": _nested(data, "resources", "vram_total_mb"),
         "disk_free_percent": _nested(data, "resources", "disk_free_percent"),
         "disk_free_gb": _nested(data, "resources", "disk_free_gb"),
         "p3d_running": _nested(data, "p3d", "running"),

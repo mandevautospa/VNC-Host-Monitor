@@ -1,4 +1,4 @@
-"""Save daily CPU/RAM graph images to disk without requiring a GUI display.
+"""Save daily resource graph images to disk without requiring a GUI display.
 
 Called automatically by ``MonitorEngine`` on each day rollover so that
 one PNG per host is persisted to ``analysis/plots/daily/`` even if the
@@ -31,7 +31,7 @@ def save_daily_graph_images(
 
     Uses ``load_day_history`` so it checks per-day archive CSVs before
     falling back to the main CSV.  The output PNGs are written to
-    ``output_dir`` and named ``YYYY-MM-DD_<host>_cpu_ram.png``.
+    ``output_dir`` and named ``YYYY-MM-DD_<host>_resource_trends.png``.
 
     Rendering is entirely non-interactive (``FigureCanvasAgg``) so this
     function is safe to call from background threads and environments
@@ -103,8 +103,22 @@ def save_daily_graph_images(
 
         ax.plot(ts_series, host_df["host_cpu_percent"], label="Host CPU %", linewidth=0.9)
         ax.plot(ts_series, host_df["host_ram_percent"], label="Host RAM %", linewidth=0.9)
+        gpu_mask = host_df["host_gpu_percent"].notna()
+        vram_mask = host_df["host_vram_percent"].notna()
+        ax.plot(
+            ts_series[gpu_mask],
+            host_df.loc[gpu_mask, "host_gpu_percent"],
+            label="Host GPU %",
+            linewidth=0.9,
+        )
+        ax.plot(
+            ts_series[vram_mask],
+            host_df.loc[vram_mask, "host_vram_percent"],
+            label="Host VRAM %",
+            linewidth=0.9,
+        )
 
-        ax.set_title(f"Host CPU and RAM usage — {host}  ({date_str})")
+        ax.set_title(f"Host CPU/RAM/GPU/VRAM usage — {host}  ({date_str})")
         ax.set_xlabel("Time (local)")
         ax.set_ylabel("Percent")
         ax.set_ylim(0, 100)
@@ -120,7 +134,7 @@ def save_daily_graph_images(
 
         fig.tight_layout()
 
-        out_path = output_dir / f"{date_str}_{host}_cpu_ram.png"
+        out_path = output_dir / f"{date_str}_{host}_resource_trends.png"
         fig.savefig(out_path)
         _logger.info("Saved daily graph image: %s", out_path)
         saved.append(out_path)

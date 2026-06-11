@@ -71,6 +71,10 @@ class TestIntegrationCentralMonitor(unittest.TestCase):
             "resources": {
                 "cpu_percent": 45.5,
                 "ram_percent": 62.0,
+                "gpu_percent": 22.0,
+                "vram_percent": 31.0,
+                "vram_used_mb": 2480.0,
+                "vram_total_mb": 8192.0,
                 "disk_free_percent": 35.0,
                 "disk_free_gb": 150.0,
             },

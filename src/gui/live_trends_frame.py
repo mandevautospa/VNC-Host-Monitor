@@ -59,7 +59,7 @@ def _ts_to_local_str(ts: pd.Timestamp, fmt: str = "%H:%M:%S") -> str:
 
 class LiveTrendsFrame(ttk.Frame):
     """
-    Live CPU/RAM trend graph for one host, backed by the shared heartbeat
+    Live CPU/RAM/GPU/VRAM trend graph for one host, backed by the shared heartbeat
     metrics CSV (``analysis/heartbeat_metrics.csv``).
 
     The frame re-reads the CSV every *refresh_ms* milliseconds and
@@ -129,13 +129,17 @@ class LiveTrendsFrame(ttk.Frame):
         # Markers ensure a visible point even when only one sample exists.
         (self.cpu_line,) = self.ax.plot([], [], label="Host CPU %", marker="o", markersize=3)
         (self.ram_line,) = self.ax.plot([], [], label="Host RAM %", marker="o", markersize=3)
+        (self.gpu_line,) = self.ax.plot([], [], label="Host GPU %", marker="o", markersize=3)
+        (self.vram_line,) = self.ax.plot([], [], label="Host VRAM %", marker="o", markersize=3)
         self.ax.legend(loc="upper left")
 
         self.canvas = FigureCanvasTkAgg(self.figure, master=self)
         self.canvas.get_tk_widget().pack(fill="both", expand=True, padx=10, pady=10)
 
     def _setup_axes(self) -> None:
-        self.ax.set_title(f"{self.host_name} CPU/RAM Usage (last {self.window_minutes} min)")
+        self.ax.set_title(
+            f"{self.host_name} CPU/RAM/GPU/VRAM Usage (last {self.window_minutes} min)"
+        )
         self.ax.set_xlabel("Time (local)")
         self.ax.set_ylabel("Percent")
         self.ax.set_ylim(0, 100)
@@ -160,6 +164,8 @@ class LiveTrendsFrame(ttk.Frame):
                 self.status_label.config(text=_COLLECTING_MSG)
                 self.cpu_line.set_data([], [])
                 self.ram_line.set_data([], [])
+                self.gpu_line.set_data([], [])
+                self.vram_line.set_data([], [])
                 self.canvas.draw_idle()
             else:
                 self._redraw(df)
@@ -175,22 +181,36 @@ class LiveTrendsFrame(ttk.Frame):
         timestamps = local_ts.tolist()
         cpu_values = df["host_cpu_percent"].tolist()
         ram_values = df["host_ram_percent"].tolist()
+        gpu_values = [
+            (None if pd.isna(value) else float(value))
+            for value in df["host_gpu_percent"].tolist()
+        ]
+        vram_values = [
+            (None if pd.isna(value) else float(value))
+            for value in df["host_vram_percent"].tolist()
+        ]
 
         self.cpu_line.set_data(timestamps, cpu_values)
         self.ram_line.set_data(timestamps, ram_values)
+        self.gpu_line.set_data(timestamps, gpu_values)
+        self.vram_line.set_data(timestamps, vram_values)
         self._fit_xlim(timestamps)
 
         latest = df.iloc[-1]
         cpu_latest = latest["host_cpu_percent"]
         ram_latest = latest["host_ram_percent"]
+        gpu_latest = latest["host_gpu_percent"]
+        vram_latest = latest["host_vram_percent"]
         ts_latest = latest["heartbeat_timestamp"]
 
         cpu_text = f"{cpu_latest:.1f}%" if pd.notna(cpu_latest) else "-"
         ram_text = f"{ram_latest:.1f}%" if pd.notna(ram_latest) else "-"
+        gpu_text = f"{gpu_latest:.1f}%" if pd.notna(gpu_latest) else "-"
+        vram_text = f"{vram_latest:.1f}%" if pd.notna(vram_latest) else "-"
         self.status_label.config(
             text=(
                 f"Last update: {_ts_to_local_str(ts_latest)} | "
-                f"CPU {cpu_text} | RAM {ram_text}"
+                f"CPU {cpu_text} | RAM {ram_text} | GPU {gpu_text} | VRAM {vram_text}"
             )
         )
 
@@ -230,7 +250,7 @@ class LiveTrendsFrame(ttk.Frame):
 # ---------------------------------------------------------------------------
 
 class DailyGraphWindow:
-    """Read-only popup showing one host's full-day CPU/RAM history.
+    """Read-only popup showing one host's full-day resource history.
 
     Opens as a ``tk.Toplevel`` with navigation buttons to browse any
     calendar date.  Data for past days is loaded from the per-day archive
@@ -356,8 +376,10 @@ class DailyGraphWindow:
 
         ax.plot(local_ts, df["host_cpu_percent"], label="Host CPU %", linewidth=0.9)
         ax.plot(local_ts, df["host_ram_percent"], label="Host RAM %", linewidth=0.9)
+        ax.plot(local_ts, df["host_gpu_percent"], label="Host GPU %", linewidth=0.9)
+        ax.plot(local_ts, df["host_vram_percent"], label="Host VRAM %", linewidth=0.9)
 
-        ax.set_title(f"Host CPU and RAM usage — {self.host_name}  ({date_str})")
+        ax.set_title(f"Host CPU/RAM/GPU/VRAM usage — {self.host_name}  ({date_str})")
         ax.set_xlabel("Time (local)")
         ax.set_ylabel("Percent")
         ax.set_ylim(0, 100)

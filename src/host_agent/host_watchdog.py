@@ -144,6 +144,10 @@ def _run_once(config: dict, config_path: str, logger: logging.Logger) -> None:
         "ram_percent": resources.ram_percent,
         "disk_free_percent": resources.disk_free_percent,
         "disk_free_gb": resources.disk_free_gb,
+        "gpu_percent": resources.gpu_percent,
+        "vram_percent": resources.vram_percent,
+        "vram_used_mb": resources.vram_used_mb,
+        "vram_total_mb": resources.vram_total_mb,
     }
 
     events_data = {

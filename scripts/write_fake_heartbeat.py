@@ -72,6 +72,10 @@ def build_heartbeat_payload(
     p3d_running: bool,
     cpu_percent: float,
     ram_percent: float,
+    gpu_percent: float | None = 16.0,
+    vram_percent: float | None = 28.0,
+    vram_used_mb: float | None = 1024.0,
+    vram_total_mb: float | None = 4096.0,
     disk_free_percent: float,
     disk_free_gb: float,
     recent_app_crash_count: int = 0,
@@ -113,6 +117,10 @@ def build_heartbeat_payload(
         "resources": {
             "cpu_percent": round(cpu_percent, 1),
             "ram_percent": round(ram_percent, 1),
+            "gpu_percent": round(gpu_percent, 1) if gpu_percent is not None else None,
+            "vram_percent": round(vram_percent, 1) if vram_percent is not None else None,
+            "vram_used_mb": round(vram_used_mb, 1) if vram_used_mb is not None else None,
+            "vram_total_mb": round(vram_total_mb, 1) if vram_total_mb is not None else None,
             "disk_free_percent": round(disk_free_percent, 1),
             "disk_free_gb": round(disk_free_gb, 1),
         },
@@ -146,6 +154,10 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--p3d-running", type=_parse_bool, default=True, help="Set P3D running true/false.")
     parser.add_argument("--cpu-percent", type=float, default=18.0, help="CPU percent to report.")
     parser.add_argument("--ram-percent", type=float, default=42.0, help="RAM percent to report.")
+    parser.add_argument("--gpu-percent", type=float, default=16.0, help="GPU percent to report.")
+    parser.add_argument("--vram-percent", type=float, default=28.0, help="VRAM percent to report.")
+    parser.add_argument("--vram-used-mb", type=float, default=1024.0, help="VRAM used MB to report.")
+    parser.add_argument("--vram-total-mb", type=float, default=4096.0, help="VRAM total MB to report.")
     parser.add_argument("--disk-free-percent", type=float, default=61.0, help="Disk free percent to report.")
     parser.add_argument("--disk-free-gb", type=float, default=120.0, help="Disk free GB to report.")
     parser.add_argument(
@@ -192,6 +204,10 @@ def main() -> None:
                 p3d_running=args.p3d_running,
                 cpu_percent=args.cpu_percent,
                 ram_percent=args.ram_percent,
+                gpu_percent=args.gpu_percent,
+                vram_percent=args.vram_percent,
+                vram_used_mb=args.vram_used_mb,
+                vram_total_mb=args.vram_total_mb,
                 disk_free_percent=args.disk_free_percent,
                 disk_free_gb=args.disk_free_gb,
                 recent_app_crash_count=args.recent_app_crash_count,
