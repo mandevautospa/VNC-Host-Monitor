@@ -81,6 +81,14 @@ def parse_heartbeat(path):
 
         # Error summary
         "error_count": len(data.get("errors", [])) if isinstance(data.get("errors", []), list) else "",
+
+        # DIS/session-layer monitoring fields — not available from heartbeat files;
+        # populated by the live monitor engine only.
+        "dis_status": "",
+        "dis_packets_per_sec": "",
+        "dis_bytes_per_sec": "",
+        "dis_monitoring_mode": "",
+        "dis_error": "",
     }
 
 
@@ -114,6 +122,12 @@ def collect_once():
         "recent_app_hang_count",
         "recent_display_error_count",
         "error_count",
+        # DIS/session-layer monitoring fields (populated by live monitor only)
+        "dis_status",
+        "dis_packets_per_sec",
+        "dis_bytes_per_sec",
+        "dis_monitoring_mode",
+        "dis_error",
     ]
 
     existing_keys = read_existing_keys(OUTPUT_CSV)

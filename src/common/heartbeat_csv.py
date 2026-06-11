@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import csv
 import logging
+import shutil
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -319,6 +320,85 @@ def load_day_history(
     return load_heartbeat_history(csv_path=csv_path, host=host, date=target_date.isoformat())
 
 
+def _csv_needs_migration(csv_path: Path) -> bool:
+    """Return True when *csv_path* exists and its header is missing columns.
+
+    Compares the first row of the CSV against ``_CSV_FIELDNAMES``.  Returns
+    ``False`` for missing, empty, or unreadable files.
+    """
+    if not csv_path.exists():
+        return False
+    try:
+        with csv_path.open("r", newline="", encoding="utf-8") as fh:
+            header = next(csv.reader(fh), None)
+            if not header:
+                return False
+            return bool(set(_CSV_FIELDNAMES) - set(header))
+    except (OSError, csv.Error):
+        return False
+
+
+def _migrate_csv(csv_path: Path) -> None:
+    """Rewrite *csv_path* to the current ``_CSV_FIELDNAMES`` schema.
+
+    1. Saves the original file as ``<stem>_legacy<suffix>`` so that the
+       raw pre-migration data is never lost.  Existing per-day archive files
+       (``analysis/archive/YYYY-MM-DD_heartbeat_metrics.csv``) continue to
+       serve the "View Full Day" and "History" views untouched.
+    2. Rewrites the main CSV with the full ``_CSV_FIELDNAMES`` header; rows
+       that predate the schema addition receive empty strings for the new
+       columns so ``load_heartbeat_history`` (which uses ``pd.read_csv``)
+       can parse the file without column-count mismatches.
+
+    All operations are wrapped in error handling so a failure here never
+    prevents new data from being appended.
+    """
+    # Read existing rows before touching the file.
+    try:
+        with csv_path.open("r", newline="", encoding="utf-8") as fh:
+            existing_rows: list[dict] = list(csv.DictReader(fh))
+    except (OSError, csv.Error) as exc:
+        _logger.warning(
+            "Could not read %s for schema migration: %s; skipping.", csv_path, exc
+        )
+        return
+
+    # Persist the original file as a legacy backup.
+    legacy_path = csv_path.with_name(csv_path.stem + "_legacy" + csv_path.suffix)
+    try:
+        shutil.copy2(csv_path, legacy_path)
+        _logger.info("Legacy CSV backup preserved: %s", legacy_path)
+    except OSError as exc:
+        _logger.warning("Could not write legacy backup to %s: %s", legacy_path, exc)
+
+    # Rewrite main CSV with the full schema; pad missing fields with "".
+    try:
+        with csv_path.open("w", newline="", encoding="utf-8") as fh:
+            writer = csv.DictWriter(
+                fh, fieldnames=_CSV_FIELDNAMES, extrasaction="ignore"
+            )
+            writer.writeheader()
+            for row in existing_rows:
+                for col in _CSV_FIELDNAMES:
+                    row.setdefault(col, "")
+                writer.writerow(row)
+        _logger.info(
+            "Migrated %s to current schema (%d existing row(s) preserved).",
+            csv_path,
+            len(existing_rows),
+        )
+    except (OSError, csv.Error) as exc:
+        _logger.error(
+            "Failed to rewrite %s during migration: %s. Attempting restore from backup.",
+            csv_path,
+            exc,
+        )
+        try:
+            shutil.copy2(legacy_path, csv_path)
+        except OSError as restore_exc:
+            _logger.error("Restore also failed: %s", restore_exc)
+
+
 def append_poll_results(
     results: list,
     csv_path: str | Path = DEFAULT_CSV_PATH,
@@ -353,6 +433,17 @@ def append_poll_results(
         return 0
 
     csv_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Migrate the file when its header predates the current schema (e.g. a CSV
+    # created by the legacy collect_heartbeat_metrics.py script that did not
+    # include the DIS monitoring columns).  This ensures pd.read_csv never
+    # encounters a column-count mismatch that would make the entire file
+    # unreadable.  A backup copy is preserved as heartbeat_metrics_legacy.csv.
+    if _csv_needs_migration(csv_path):
+        _logger.warning(
+            "CSV at %s has an outdated schema; migrating to current format.", csv_path
+        )
+        _migrate_csv(csv_path)
 
     existing_keys: set[tuple[str, str]] = set()
     if csv_path.exists():

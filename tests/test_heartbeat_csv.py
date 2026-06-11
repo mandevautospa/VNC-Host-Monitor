@@ -8,7 +8,15 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from src.common.heartbeat_csv import append_poll_results, archive_day, load_day_history, load_heartbeat_history
+from src.common.heartbeat_csv import (
+    _CSV_FIELDNAMES,
+    _csv_needs_migration,
+    _migrate_csv,
+    append_poll_results,
+    archive_day,
+    load_day_history,
+    load_heartbeat_history,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -472,3 +480,170 @@ def test_load_day_history_returns_empty_when_no_data(tmp_path):
     # Request a different date that has no data.
     df = load_day_history(datetime(2024, 1, 1).date(), csv_path=csv_file, archive_dir=archive_dir)
     assert df.empty
+
+
+# ---------------------------------------------------------------------------
+# Legacy CSV migration
+# ---------------------------------------------------------------------------
+
+# The legacy fieldnames list mirrors what collect_heartbeat_metrics.py wrote
+# before the DIS monitoring columns were added.
+_LEGACY_FIELDNAMES = [
+    "collected_at",
+    "heartbeat_timestamp",
+    "heartbeat_file",
+    "schema_version",
+    "host",
+    "watchdog_version",
+    "status",
+    "host_cpu_percent",
+    "host_ram_percent",
+    "host_gpu_percent",
+    "host_vram_percent",
+    "host_vram_used_mb",
+    "host_vram_total_mb",
+    "disk_free_percent",
+    "disk_free_gb",
+    "p3d_running",
+    "p3d_pid",
+    "p3d_cpu_percent",
+    "p3d_memory_mb",
+    "p3d_memory_percent",
+    "p3d_hang_suspected",
+    "tightvnc_service_running",
+    "recent_app_crash_count",
+    "recent_app_hang_count",
+    "recent_display_error_count",
+    "error_count",
+]
+
+
+def _write_legacy_csv(tmp_path: Path, rows: list[dict]) -> Path:
+    """Write a CSV using the old 26-column schema (no DIS columns)."""
+    csv_file = tmp_path / "heartbeat_metrics.csv"
+    with csv_file.open("w", newline="", encoding="utf-8") as fh:
+        writer = csv.DictWriter(fh, fieldnames=_LEGACY_FIELDNAMES, extrasaction="ignore")
+        writer.writeheader()
+        writer.writerows(rows)
+    return csv_file
+
+
+def test_csv_needs_migration_detects_legacy_csv(tmp_path):
+    """_csv_needs_migration returns True for a 26-column legacy CSV."""
+    now = datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+    csv_file = _write_legacy_csv(tmp_path, [_row("host-01", now, 20.0, 40.0)])
+    assert _csv_needs_migration(csv_file) is True
+
+
+def test_csv_needs_migration_false_for_current_schema(tmp_path):
+    """_csv_needs_migration returns False when the header already matches."""
+    csv_file = tmp_path / "metrics.csv"
+    ts = "2024-01-01T12:00:00+00:00"
+    # Use append_poll_results to create a CSV with the full current schema.
+    append_poll_results([_make_poll_result("host-01", ts)], csv_path=csv_file)
+    assert _csv_needs_migration(csv_file) is False
+
+
+def test_csv_needs_migration_false_for_missing_file(tmp_path):
+    """_csv_needs_migration returns False when the file does not exist."""
+    assert _csv_needs_migration(tmp_path / "nonexistent.csv") is False
+
+
+def test_migrate_csv_rewrites_header(tmp_path):
+    """_migrate_csv rewrites the CSV with the full _CSV_FIELDNAMES header."""
+    now = datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+    csv_file = _write_legacy_csv(tmp_path, [_row("host-01", now, 33.0, 66.0)])
+
+    _migrate_csv(csv_file)
+
+    with csv_file.open("r", newline="", encoding="utf-8") as fh:
+        header = next(csv.reader(fh))
+    assert header == _CSV_FIELDNAMES
+
+
+def test_migrate_csv_preserves_existing_rows(tmp_path):
+    """_migrate_csv keeps all old rows intact after migration."""
+    now = datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+    rows = [
+        _row("host-01", now, 11.0, 22.0),
+        _row("host-02", now + timedelta(minutes=1), 33.0, 44.0),
+    ]
+    csv_file = _write_legacy_csv(tmp_path, rows)
+
+    _migrate_csv(csv_file)
+
+    df = load_heartbeat_history(csv_path=csv_file)
+    assert len(df) == 2
+    assert set(df["host"].tolist()) == {"host-01", "host-02"}
+    assert df[df["host"] == "host-01"].iloc[0]["host_cpu_percent"] == 11.0
+
+
+def test_migrate_csv_creates_legacy_backup(tmp_path):
+    """_migrate_csv saves the original file as heartbeat_metrics_legacy.csv."""
+    now = datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+    csv_file = _write_legacy_csv(tmp_path, [_row("host-01", now, 20.0, 40.0)])
+
+    _migrate_csv(csv_file)
+
+    legacy_file = tmp_path / "heartbeat_metrics_legacy.csv"
+    assert legacy_file.exists()
+    # Legacy backup has the old 26-column header.
+    with legacy_file.open("r", newline="", encoding="utf-8") as fh:
+        header = next(csv.reader(fh))
+    assert header == _LEGACY_FIELDNAMES
+
+
+def test_migrate_csv_new_columns_are_empty_for_old_rows(tmp_path):
+    """Old rows receive empty strings for DIS columns added after migration."""
+    now = datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+    csv_file = _write_legacy_csv(tmp_path, [_row("host-01", now, 10.0, 20.0)])
+
+    _migrate_csv(csv_file)
+
+    with csv_file.open("r", newline="", encoding="utf-8") as fh:
+        reader = csv.DictReader(fh)
+        data_row = next(reader)
+    assert data_row["dis_status"] == ""
+    assert data_row["dis_packets_per_sec"] == ""
+    assert data_row["dis_error"] == ""
+
+
+def test_append_poll_results_migrates_legacy_csv(tmp_path):
+    """append_poll_results migrates a legacy CSV before appending new rows."""
+    # Use UTC-aware legacy timestamp to match real heartbeat file format.
+    now = datetime(2024, 6, 1, 10, 0, 0, tzinfo=timezone.utc)
+    csv_file = _write_legacy_csv(tmp_path, [_row("host-01", now, 12.0, 24.0)])
+
+    ts_new = "2024-06-01T11:00:00+00:00"
+    result = _make_poll_result("host-01", ts_new, cpu=50.0, ram=60.0)
+
+    written = append_poll_results([result], csv_path=csv_file)
+
+    assert written == 1
+    df = load_heartbeat_history(csv_path=csv_file)
+    # Both the migrated legacy row and the new row must be present.
+    assert len(df) == 2
+    assert df.iloc[0]["host_cpu_percent"] == 12.0
+    assert df.iloc[1]["host_cpu_percent"] == 50.0
+
+
+def test_append_poll_results_legacy_backup_created_on_migration(tmp_path):
+    """append_poll_results leaves a legacy backup when it migrates the CSV."""
+    now = datetime(2024, 6, 1, 10, 0, 0, tzinfo=timezone.utc)
+    csv_file = _write_legacy_csv(tmp_path, [_row("host-01", now, 9.0, 18.0)])
+
+    ts_new = "2024-06-01T11:00:00+00:00"
+    append_poll_results([_make_poll_result("host-01", ts_new)], csv_path=csv_file)
+
+    legacy_file = tmp_path / "heartbeat_metrics_legacy.csv"
+    assert legacy_file.exists()
+
+
+def test_append_poll_results_no_migration_for_current_schema(tmp_path):
+    """append_poll_results does not create a legacy backup for up-to-date CSVs."""
+    csv_file = tmp_path / "heartbeat_metrics.csv"
+    ts = "2024-06-01T12:00:00+00:00"
+    append_poll_results([_make_poll_result("host-01", ts)], csv_path=csv_file)
+
+    legacy_file = tmp_path / "heartbeat_metrics_legacy.csv"
+    assert not legacy_file.exists()
